@@ -56,14 +56,52 @@ class _LoginScreenState extends State<LoginScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 8),
-            const Text(
-              'Suivi des latrines publiques',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Projet MHA Mauritanie - Version 1.0',
-              style: TextStyle(color: Colors.black54),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.green.shade100),
+              ),
+              child: const Row(
+                children: [
+                  CircleAvatar(
+                    radius: 26,
+                    backgroundColor: Color(0xFF4CAF50),
+                    child: Icon(
+                      Icons.apartment_rounded,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'PIAM',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Suivi des latrines publiques',
+                          style: TextStyle(color: Colors.black87),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Projet MHA Mauritanie',
+                          style: TextStyle(color: Colors.black54),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.verified_rounded, color: Color(0xFF4CAF50)),
+                ],
+              ),
             ),
             const SizedBox(height: 12),
             Text(
@@ -79,6 +117,33 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.black12),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.lock_outline_rounded,
+                          color: Color(0xFF4CAF50),
+                          size: 18,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Connexion sécurisée',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   const Text(
                     '* Nom d’utilisateur',
                     style: TextStyle(fontWeight: FontWeight.w600),

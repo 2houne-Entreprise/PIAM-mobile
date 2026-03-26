@@ -1,10 +1,15 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
+
 import '../services/sqlite_service.dart';
 
 class Niveau3ControleTravaux extends StatefulWidget {
   static const String routeName = '/niveau3';
+
   const Niveau3ControleTravaux({super.key});
 
   @override
@@ -13,22 +18,80 @@ class Niveau3ControleTravaux extends StatefulWidget {
 
 class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
   final SQLiteService _dbService = SQLiteService();
+  final ImagePicker _picker = ImagePicker();
 
-  // SECTION 1
-  bool _sec1Acheve = false;
-  bool _sec1EnCours = false;
+  final Map<String, String> _sectionStatus = {
+    'section1': 'En cours',
+    'section2': 'En cours',
+    'section3': 'En cours',
+    'section4': 'En cours',
+    'section5': 'En cours',
+    'section6': 'En cours',
+    'section7': 'En cours',
+    'section8': 'En cours',
+    'section9': 'En cours',
+    'section10': 'En cours',
+    'section11': 'En cours',
+    'section12': 'En cours',
+  };
 
-  // SECTION 2
+  final Map<String, String?> _photos = {
+    'section2': null,
+    'section3Apriori': null,
+    'section3Aposteriori': null,
+    'section4': null,
+    'section5': null,
+    'section11': null,
+  };
+
+  final Map<String, Map<String, String>?> _photosGps = {
+    'section2': null,
+    'section3Apriori': null,
+    'section3Aposteriori': null,
+    'section4': null,
+    'section5': null,
+    'section11': null,
+  };
+
   final TextEditingController _implantDateController = TextEditingController();
   final TextEditingController _gpsXController = TextEditingController();
   final TextEditingController _gpsYController = TextEditingController();
   final TextEditingController _fouillesDebutController =
       TextEditingController();
   final TextEditingController _fouillesFinController = TextEditingController();
-  bool _fouillesConformes = false;
   final TextEditingController _sec2RemarqueController = TextEditingController();
+  String _fouillesConformes = 'Oui';
 
-  // SECTION 3
+  final TextEditingController _sec3AprioriDateController =
+      TextEditingController();
+  final TextEditingController _sec3AposterioriDateController =
+      TextEditingController();
+  final TextEditingController _sec4AprioriDateController =
+      TextEditingController();
+  final TextEditingController _sec4AposterioriDateController =
+      TextEditingController();
+  final TextEditingController _sec5AprioriDateController =
+      TextEditingController();
+  final TextEditingController _sec5AposterioriDateController =
+      TextEditingController();
+  final TextEditingController _sec7AprioriDateController =
+      TextEditingController();
+  final TextEditingController _sec7AposterioriDateController =
+      TextEditingController();
+  final TextEditingController _sec8AprioriDateController =
+      TextEditingController();
+  final TextEditingController _sec8AposterioriDateController =
+      TextEditingController();
+  final TextEditingController _sec11AprioriDateController =
+      TextEditingController();
+  final TextEditingController _sec11AposterioriDateController =
+      TextEditingController();
+  final TextEditingController _autreRecommandationController =
+      TextEditingController();
+
+  String _appreciationAvancement = 'Satisfaisant';
+  String _recommandation = 'Mobiliser le personnel requis';
+
   final List<Map<String, dynamic>> _sec3APriori = [
     {
       'question': 'Origine des agglomérés',
@@ -37,39 +100,44 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
       'choices': ['Achat', 'Confection par entreprise'],
     },
     {
-      'question': 'Nombre d’agglomérés pleins requis disponible',
+      'question': 'Le nombre d’agglomérés pleins requis est disponible',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Durée de séchage des agglomérés pleins respectée',
+      'question': 'La durée de séchage des agglomérés pleins a été respectée',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Qualité des agglomérés pleins bonne',
+      'question': 'La qualité des agglomérés pleins est bonne',
       'response': 'Oui',
       'remark': '',
     },
     {'question': 'Le fer est de qualité', 'response': 'Oui', 'remark': ''},
     {
-      'question': 'Ferraillage respecte dimensions et espacement requis',
+      'question':
+          'Le ferraillage respecte les dimensions et l’espacement requis entre les barres de fer',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Dosage du béton pour coulage des dalles respecté',
+      'question': 'Le dosage du béton pour le coulage des dalles est respecté',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Moules de coffrage de dalles respectent dimensions',
+      'question': 'Les moules de coffrage des dalles respectent les dimensions',
       'response': 'Oui',
       'remark': '',
     },
-    {'question': 'Remblai trottoir compacté', 'response': 'Oui', 'remark': ''},
     {
-      'question': 'Coffrage marches d’accès conforme au plan',
+      'question': 'Le remblai au niveau du trottoir est compacté',
+      'response': 'Oui',
+      'remark': '',
+    },
+    {
+      'question': 'Le coffrage des marches d’accès est conforme au plan',
       'response': 'Oui',
       'remark': '',
     },
@@ -77,89 +145,100 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
 
   final List<Map<String, dynamic>> _sec3APosteriori = [
     {
-      'question': 'Béton de propreté 5cm au fond de la fosse',
+      'question':
+          'Le béton de propreté au fond de la fosse respecte au moins 5 cm d’épaisseur',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Murs rectilignes et perpendiculaires',
+      'question': 'Les murs sont rectilignes et perpendiculaires',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Murs separations fosses distance+étanches+enduit 2 côtés',
+      'question':
+          'Les murs de séparation des fosses sont à bonne distance et étanches et recouverts d’enduit des 2 côtés',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Murs extérieurs ajourés pour infiltration liquides',
+      'question':
+          'Les murs extérieurs de la fosse sont bien ajourés, permettant l’infiltration des liquides',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Maçonnerie des fosses dépasse terrain naturel conforme plan',
+      'question':
+          'La maçonnerie des fosses dépasse le terrain naturel conformément au plan',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Dalles respectent dimensions requises',
-      'response': 'Oui',
-      'remark': '',
-    },
-    {'question': 'Surfaces des dalles lisses', 'response': 'Oui', 'remark': ''},
-    {
-      'question': 'Trous défécation placés plan',
+      'question': 'Les dalles respectent les dimensions requises',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Dalles vidange avec trou conduit d’aération',
+      'question': 'Les surfaces des dalles sont bien lisses',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Regards vidange intégrés dalle vidange',
+      'question':
+          'Les trous pour la défécation sont placés conformément au plan',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Marches d’accès conformes plan',
+      'question':
+          'Les dalles de vidange disposent d’un trou pour le conduit d’aération',
+      'response': 'Oui',
+      'remark': '',
+    },
+    {
+      'question':
+          'Les regards pour la vidange sont intégrés à la dalle de vidange',
+      'response': 'Oui',
+      'remark': '',
+    },
+    {
+      'question': 'Les marches d’accès sont conformes au plan',
       'response': 'Oui',
       'remark': '',
     },
   ];
 
-  // SECTION 4
   final List<Map<String, dynamic>> _sec4APriori = [
     {
-      'question': 'Origine des agglos creux',
+      'question': 'Origine des agglomérés creux',
       'response': 'Achat',
       'remark': '',
       'choices': ['Achat', 'Confection par entreprise'],
     },
     {
-      'question': 'Nombre d’agglos creux requis confectionné',
+      'question': 'Le nombre d’agglos creux requis a été confectionné',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Durée de séchage des agglos creux respectée',
+      'question': 'La durée de séchage des agglos creux a été respectée',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Qualité des agglos creux bonne',
+      'question': 'La qualité des agglos creux est bonne',
       'response': 'Oui',
       'remark': '',
     },
     {'question': 'Le fer est de qualité', 'response': 'Oui', 'remark': ''},
     {
-      'question': 'Ferraillage poteaux dimensions/espacement respectés',
+      'question':
+          'Le ferraillage des poteaux respecte les dimensions et l’espacement requis entre les barres de fer',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Coffrage poteaux perpendiculaire au sol',
+      'question': 'Le coffrage des poteaux est bien perpendiculaire au sol',
       'response': 'Oui',
       'remark': '',
     },
@@ -168,36 +247,38 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
   final List<Map<String, dynamic>> _sec4APosteriori = [
     {
       'question':
-          'Murs rectilignes, perpendiculaires et reposent sur murs fosse',
+          'Les murs sont rectilignes et perpendiculaires et reposent bien sur les murs de la fosse',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Murs séparation cabines hauteur suffisante 1,80m',
+      'question':
+          'Les murs de séparation des cabines sont d’une hauteur suffisante (1,80 m)',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Marches d’accès conformes plan',
+      'question': 'Les marches d’accès sont conformes au plan',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Conduits d’aération solidaires des murs',
+      'question': 'Les conduits d’aération sont bien solidaires des murs',
       'response': 'Oui',
       'remark': '',
     },
   ];
 
-  // SECTION 5
   final List<Map<String, dynamic>> _sec5APriori = [
     {
-      'question': 'Ferraillage dalle toit dimensions et espacement respectés',
+      'question':
+          'Le ferraillage de la dalle du toit respecte les dimensions et l’espacement requis entre les barres de fer',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Structure métallique complète IPN/cornières/charpente',
+      'question':
+          'La fourniture de la structure métallique est complète avec les IPN, les cornières et les divers éléments de la charpente',
       'response': 'Oui',
       'remark': '',
     },
@@ -205,40 +286,42 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
 
   final List<Map<String, dynamic>> _sec5APosteriori = [
     {
-      'question': 'Toiture inclinée pour évacuation eaux pluie',
+      'question':
+          'La toiture est légèrement inclinée permettant l’évacuation des eaux de pluie',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Structure métallique solide (tôle fixée IPN vis/écrou)',
+      'question':
+          'La pose de la structure métallique est bien solide et ne présente pas de faiblesse',
       'response': 'Oui',
       'remark': '',
     },
   ];
 
-  // SECTION 6
   final List<Map<String, dynamic>> _sec6 = [
     {
-      'question': 'Murs intérieurs/extérieurs enduits lisses',
+      'question':
+          'Les murs intérieurs et extérieurs sont enduits avec une surface bien lisse',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Enduits adhèrent bien aux murs',
+      'question': 'Les enduits adhèrent bien aux murs',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Tyrolienne appliquée sur murs extérieurs',
+      'question': 'La tyrolienne est appliquée sur les murs extérieurs',
       'response': 'Oui',
       'remark': '',
     },
   ];
 
-  // SECTION 7
   final List<Map<String, dynamic>> _sec7APriori = [
     {
-      'question': 'Portes conformes CPT (MOE validation avant pose)',
+      'question':
+          'Les portes sont conformes au CPT (à valider obligatoirement par le MOE avant pose)',
       'response': 'Oui',
       'remark': '',
     },
@@ -246,89 +329,105 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
 
   final List<Map<String, dynamic>> _sec7APosteriori = [
     {
-      'question': 'Portes posées, s’ouvrent et ferment facilement',
+      'question': 'Les portes sont posées, s’ouvrent et se ferment facilement',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Système fermeture intérieur/extérieur fonctionnel',
+      'question':
+          'Le système de fermeture des portes (intérieur et extérieur) est bien fonctionnel',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Fenêtres aération installées dans chaque cabine',
+      'question': 'Les fenêtres d’aération sont installées dans chaque cabine',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Barres soutien fixées pour PMR',
+      'question':
+          'Des barres de soutien sont fixées dans les cabines destinées aux PMR',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Porte manteau fixé dans cabine filles',
+      'question':
+          'Un porte manteau est fixé dans chaque cabine destinée aux filles',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Poubelle installée à la sortie latrines',
+      'question': 'Une poubelle est installée à la sortie des latrines',
       'response': 'Oui',
       'remark': '',
     },
   ];
 
-  // SECTION 8
   final List<Map<String, dynamic>> _sec8APriori = [
-    {'question': 'Cuvette conforme CPT', 'response': 'Oui', 'remark': ''},
+    {
+      'question': 'La cuvette est conforme au CPT',
+      'response': 'Oui',
+      'remark': '',
+    },
   ];
 
   final List<Map<String, dynamic>> _sec8APosteriori = [
     {
-      'question': 'Cuvette solidement intégrée à dalle défécation',
+      'question': 'La cuvette est solidement intégrée à la dalle de défécation',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Conduits d’aération obturés grillage anti-mouche',
+      'question':
+          'Les conduits d’aération sont obturés par un grillage anti-mouche',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Couvercles regards en place sur dalles vidange',
+      'question':
+          'Les couvercles des regards sont en place sur les dalles de vidange',
       'response': 'Oui',
       'remark': '',
     },
   ];
 
-  // SECTION 9
   final List<Map<String, dynamic>> _sec9 = [
-    {'question': 'Murs intérieurs peints', 'response': 'Oui', 'remark': ''},
-    {'question': 'Murs extérieurs peints', 'response': 'Oui', 'remark': ''},
+    {
+      'question': 'Les murs intérieurs sont peints',
+      'response': 'Oui',
+      'remark': '',
+    },
+    {
+      'question': 'Les murs extérieurs sont peints',
+      'response': 'Oui',
+      'remark': '',
+    },
   ];
 
-  // SECTION 10
   final List<Map<String, dynamic>> _sec10 = [
     {
-      'question': 'Revêtement carrelage et plinthe posé dans toutes cabines',
+      'question':
+          'Le revêtement (carrelage et plinthe) est posé dans toutes les cabines',
       'response': 'Oui',
       'remark': '',
     },
   ];
 
-  // SECTION 11
   final List<Map<String, dynamic>> _sec11APriori = [
     {
-      'question': 'Emplacement DLM < 5m du bloc latrines',
+      'question':
+          'L’emplacement prévu pour le DLM se situe à moins de 5 m du bloc de latrines',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'Emplacement a un puisard eaux usées',
+      'question':
+          'L’emplacement prévu dispose d’un puisard pour recueillir les eaux usées',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'DLM respecte cahier des charges',
+      'question': 'Le dispositif de lave-mains respecte le cahier des charges',
       'response': 'Oui',
       'remark': '',
     },
@@ -336,137 +435,176 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
 
   final List<Map<String, dynamic>> _sec11APosteriori = [
     {
-      'question': 'DLM respecte cahier des charges',
+      'question': 'Le dispositif de lave-mains respecte le cahier des charges',
       'response': 'Oui',
       'remark': '',
     },
     {
-      'question': 'DLM fonctionnel (absence de fuite)',
+      'question': 'Le DLM est fonctionnel (absence de fuite)',
       'response': 'Oui',
       'remark': '',
     },
   ];
 
-  // SECTION 12
   final List<Map<String, dynamic>> _sec12 = [
     {
-      'question': 'Garde-fous installés solidement conformément au plan',
+      'question':
+          'Les garde-fous sont installés solidement conformément au plan',
       'response': 'Oui',
       'remark': '',
     },
   ];
 
-  // SECTION 13 - PGES
   final List<Map<String, dynamic>> _sec13Avant = [
     {
-      'question': 'Plan gestion déchets existant',
+      'question':
+          'Existence d’un plan de gestion des déchets (stockage, transport, traitement)',
       'response': 'Oui',
-      'remark': '',
+      'showRemark': false,
     },
     {
-      'question': 'Latrines ≥30m puits / ≥5m robinet',
+      'question':
+          'Implantation des latrines à une distance d’au moins 30 m d’un puits / 5 m d’un robinet',
       'response': 'Oui',
-      'remark': '',
+      'showRemark': false,
     },
     {
-      'question': 'Séance sensibilisation ouvriers IST/accidents',
-      'response': 'Oui',
-      'remark': '',
+      'question':
+          'Tenue de séance de sensibilisation des ouvriers sur les maladies respiratoires et sur les risques d’accident',
+      'response': '',
+      'type': 'number',
+      'responseLabel': 'Nb d’ouvriers sensibilisés',
+      'showRemark': false,
     },
     {
-      'question': 'Séance information démarrage avec responsables + femmes',
+      'question':
+          'Tenue d’une séance d’information avant le démarrage des travaux en présence des responsables de sites, des femmes fréquentant le site et de l’équipe de l’entreprise',
       'response': 'Oui',
-      'remark': '',
+      'showRemark': false,
     },
   ];
+
   final List<Map<String, dynamic>> _sec13Pendant = [
     {
-      'question': 'Trousse premier secours présente chantier',
+      'question': 'Trousse de premier secours présente sur le chantier',
       'response': 'Oui',
-      'remark': '',
+      'showRemark': false,
     },
     {
-      'question': 'Eau potable suffisante pour équipe',
+      'question':
+          'Eau potable disponible sur le chantier en quantité suffisante pour toute l’équipe',
       'response': 'Oui',
-      'remark': '',
+      'showRemark': false,
     },
     {
-      'question': 'Registre travailleurs complet et à jour',
+      'question': 'Présence d’un registre travailleurs complet et à jour',
       'response': 'Oui',
-      'remark': '',
-    },
-    {'question': 'Nb ouvriers présents', 'response': '', 'remark': ''},
-    {'question': 'Nb ouvriers masques', 'response': '', 'remark': ''},
-    {'question': 'Nb ouvriers EPI', 'response': '', 'remark': ''},
-    {
-      'question': 'Périmètre sécurité fosses avec barrières',
-      'response': 'Oui',
-      'remark': '',
+      'showRemark': false,
     },
     {
-      'question': 'Nb accidents depuis dernière visite',
+      'question':
+          'Nb d’ouvriers présents sur le chantier au moment du contrôle',
       'response': '',
-      'remark': '',
+      'type': 'number',
+      'responseLabel': 'Nb',
+      'showRemark': false,
     },
-    {'question': 'Zone matériaux protégée', 'response': 'Oui', 'remark': ''},
     {
-      'question': 'Matériel chantier (véhicule) fonctionnel',
+      'question': 'Nb d’ouvriers portant des masques',
+      'response': '',
+      'type': 'number',
+      'responseLabel': 'Nb',
+      'showRemark': false,
+    },
+    {
+      'question': 'Nb d’ouvriers portant des EPI',
+      'response': '',
+      'type': 'number',
+      'responseLabel': 'Nb',
+      'showRemark': false,
+    },
+    {
+      'question':
+          'Etablissement d’un périmètre de sécurité autour des fosses avec barrières de sécurité ou matériel de balisage',
+      'response': 'Oui',
+      'showRemark': false,
+    },
+    {
+      'question': 'Nb d’accidents enregistrés depuis dernière visite',
+      'response': '',
+      'type': 'number',
+      'responseLabel': 'Nb',
+      'showRemark': false,
+    },
+    {
+      'question':
+          'Zone de stockage des matériaux protégée des risques de fuite',
+      'response': 'Oui',
+      'showRemark': false,
+    },
+    {
+      'question': 'Véhicule',
       'response': 'Fonctionnel',
-      'remark': '',
+      'choices': ['Fonctionnel', 'Non fonctionnel'],
+      'showRemark': false,
     },
     {
-      'question': 'Matériel chantier (bétonnière) fonctionnel',
+      'question': 'Bétonnière',
       'response': 'Fonctionnel',
-      'remark': '',
+      'choices': ['Fonctionnel', 'Non fonctionnel'],
+      'showRemark': false,
     },
     {
-      'question': 'Déchets stockés zone balisée sécurisée',
+      'question':
+          'Stockage des déchets de chantier dans une zone balisée et sécurisée',
       'response': 'Oui',
-      'remark': '',
-    },
-    {'question': 'Déchets triés sur place', 'response': 'Oui', 'remark': ''},
-    {'question': 'Constat brulage déchets', 'response': 'Oui', 'remark': ''},
-    {
-      'question': 'Déchets évacués régulièrement',
-      'response': 'Oui',
-      'remark': '',
+      'showRemark': false,
     },
     {
-      'question': 'Aucun déchet abandonné à fin chantier',
+      'question':
+          'Les déchets sont triés sur place selon les consignes données',
       'response': 'Oui',
-      'remark': '',
+      'showRemark': false,
     },
-    {'question': 'Déblais restants étalés', 'response': 'Oui', 'remark': ''},
+    {
+      'question': 'Constat de brulage des déchets',
+      'response': 'Oui',
+      'showRemark': false,
+    },
+    {
+      'question':
+          'Les déchets sont évacués régulièrement selon le plan de gestion',
+      'response': 'Oui',
+      'showRemark': false,
+    },
+    {
+      'question':
+          'Aucun déchet n’est abandonné sur le site à la fin du chantier',
+      'response': 'Oui',
+      'showRemark': false,
+    },
+    {
+      'question': 'Etalement des déblais restants sur le terrain',
+      'response': 'Oui',
+      'showRemark': false,
+    },
   ];
 
-  // SECTION 14 - MGP
   final List<Map<String, dynamic>> _sec14 = [
     {
-      'question': 'Nb plaintes nuisance depuis dernier passage',
+      'question':
+          'Nb de plaintes enregistrées pour nuisance du chantier depuis le dernier passage',
       'response': '',
+      'type': 'number',
       'remark': '',
     },
     {
-      'question': 'Nb plaintes VBG depuis dernier passage',
+      'question':
+          'Nb de plaintes enregistrées pour violences basées sur le genre depuis le dernier passage',
       'response': '',
+      'type': 'number',
       'remark': '',
     },
-  ];
-
-  // SECTION 15 - Avancement
-  String _appreciationAvancement = 'Satisfaisant';
-  String _recommandation = 'Mobiliser le personnel requis';
-
-  final List<String> _appreciationOptions = [
-    'Satisfaisant',
-    'Non satisfaisant',
-  ];
-  final List<String> _recommandationOptions = [
-    'Mobiliser le personnel requis',
-    'Alimenter le chantier en matériaux manquants',
-    'Accélérer les travaux',
-    'Corriger les imperfections constatées',
-    'Autre (à préciser)',
   ];
 
   @override
@@ -477,61 +615,346 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
     _fouillesDebutController.dispose();
     _fouillesFinController.dispose();
     _sec2RemarqueController.dispose();
+    _sec3AprioriDateController.dispose();
+    _sec3AposterioriDateController.dispose();
+    _sec4AprioriDateController.dispose();
+    _sec4AposterioriDateController.dispose();
+    _sec5AprioriDateController.dispose();
+    _sec5AposterioriDateController.dispose();
+    _sec7AprioriDateController.dispose();
+    _sec7AposterioriDateController.dispose();
+    _sec8AprioriDateController.dispose();
+    _sec8AposterioriDateController.dispose();
+    _sec11AprioriDateController.dispose();
+    _sec11AposterioriDateController.dispose();
+    _autreRecommandationController.dispose();
     super.dispose();
   }
 
-  Widget _buildYesNoDropdown(Map<String, dynamic> item) {
-    final options = (item['choices'] as List<String>?) ?? ['Oui', 'Non'];
-    final selectedValue = item['response'] as String?;
+  Future<void> _takePhoto(String sectionKey) async {
+    try {
+      final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
+      if (photo == null) return;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          item['question'],
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 4),
-        DropdownButtonFormField<String>(
-          initialValue:
-              selectedValue ?? (options.isNotEmpty ? options.first : null),
-          decoration: const InputDecoration(border: OutlineInputBorder()),
-          items: options
-              .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-              .toList(),
-          onChanged: (v) {
-            setState(() => item['response'] = v ?? item['response']);
-          },
-        ),
-        const SizedBox(height: 4),
-        TextFormField(
-          initialValue: item['remark'] as String?,
-          decoration: const InputDecoration(
-            labelText: 'Remarque',
-            border: OutlineInputBorder(),
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Obtention de la position GPS...')),
+      );
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Permission GPS refusée')));
+        setState(() {
+          _photos[sectionKey] = photo.path;
+        });
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _photos[sectionKey] = photo.path;
+        _photosGps[sectionKey] = {
+          'lat': position.latitude.toString(),
+          'lng': position.longitude.toString(),
+        };
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur lors de la prise de photo: $error')),
+      );
+    }
+  }
+
+  Widget _buildSectionStatusSelector(String sectionKey) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Row(
+        children: [
+          const Text(
+            'Etat de la section:',
+            style: TextStyle(fontWeight: FontWeight.w600),
           ),
-          onChanged: (v) => setState(() => item['remark'] = v),
-        ),
-        const SizedBox(height: 8),
-      ],
+          const SizedBox(width: 12),
+          ChoiceChip(
+            label: const Text('Achevé'),
+            selected: _sectionStatus[sectionKey] == 'Achevé',
+            onSelected: (_) =>
+                setState(() => _sectionStatus[sectionKey] = 'Achevé'),
+          ),
+          const SizedBox(width: 8),
+          ChoiceChip(
+            label: const Text('En cours'),
+            selected: _sectionStatus[sectionKey] == 'En cours',
+            onSelected: (_) =>
+                setState(() => _sectionStatus[sectionKey] = 'En cours'),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildListQuestions(
-    String heading,
-    List<Map<String, dynamic>> questions,
-  ) {
-    return Column(
-      children: questions
-          .map((question) => _buildYesNoDropdown(question))
-          .toList(),
+  Widget _buildTextField(
+    String label,
+    TextEditingController controller, {
+    int maxLines = 1,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+          filled: true,
+          fillColor: Colors.white,
+        ),
+      ),
     );
+  }
+
+  Widget _buildPhaseHeader(String title, TextEditingController controller) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          _buildTextField('Date', controller),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuestionItem(Map<String, dynamic> item) {
+    final String type = (item['type'] as String?) ?? 'choice';
+    final bool showRemark = (item['showRemark'] as bool?) ?? true;
+
+    if (type == 'number' || type == 'text') {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                item['question'] as String,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                initialValue: item['response']?.toString() ?? '',
+                keyboardType: type == 'number'
+                    ? TextInputType.number
+                    : TextInputType.text,
+                decoration: InputDecoration(
+                  labelText: item['responseLabel'] as String? ?? 'Réponse',
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: (value) => item['response'] = value,
+              ),
+              if (showRemark) ...[
+                const SizedBox(height: 8),
+                TextFormField(
+                  initialValue: item['remark']?.toString() ?? '',
+                  decoration: const InputDecoration(
+                    labelText: 'Remarque',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (value) => item['remark'] = value,
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    final List<String> options =
+        ((item['choices'] as List<dynamic>?)
+                    ?.map((value) => value.toString())
+                    .toList() ??
+                ['Oui', 'Non'])
+            .toSet()
+            .toList();
+    final String currentValue = options.contains(item['response'])
+        ? item['response'] as String
+        : options.first;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              item['question'] as String,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: currentValue,
+              decoration: const InputDecoration(
+                labelText: 'Réponse',
+                border: OutlineInputBorder(),
+              ),
+              items: options
+                  .map(
+                    (option) => DropdownMenuItem<String>(
+                      value: option,
+                      child: Text(option),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) =>
+                  setState(() => item['response'] = value ?? ''),
+            ),
+            if (showRemark) ...[
+              const SizedBox(height: 8),
+              TextFormField(
+                initialValue: item['remark']?.toString() ?? '',
+                decoration: const InputDecoration(
+                  labelText: 'Remarque',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) => item['remark'] = value,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuestionList(List<Map<String, dynamic>> questions) {
+    return Column(children: questions.map(_buildQuestionItem).toList());
+  }
+
+  Widget _buildPhotoField(String photoKey, String label) {
+    final photoPath = _photos[photoKey];
+    final gps = _photosGps[photoKey];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: () => _takePhoto(photoKey),
+              icon: const Icon(Icons.camera_alt),
+              label: const Text('Prendre la photo'),
+            ),
+            if (photoPath != null) ...[
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.file(
+                  File(photoPath),
+                  height: 180,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ],
+            if (gps != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'GPS: ${gps['lat']}, ${gps['lng']}',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionCard({
+    required String title,
+    required String sectionKey,
+    required List<Widget> children,
+    bool initiallyExpanded = false,
+  }) {
+    return Card(
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ExpansionTile(
+        initiallyExpanded: initiallyExpanded,
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        childrenPadding: const EdgeInsets.only(bottom: 12),
+        children: [_buildSectionStatusSelector(sectionKey), ...children],
+      ),
+    );
+  }
+
+  Future<int?> _resolveProjectId() async {
+    final currentProjectId = await _dbService.getCurrentProjectId();
+    if (currentProjectId != null) return currentProjectId;
+
+    final latestProjectId = await _dbService.getLatestProjectId();
+    if (latestProjectId != null) {
+      await _dbService.setCurrentProjectId(latestProjectId);
+      return latestProjectId;
+    }
+    return null;
   }
 
   Future<void> _saveNiveau3() async {
-    final Map<String, dynamic> payload = {
-      'section1': {'acheve': _sec1Acheve, 'enCours': _sec1EnCours},
+    final projectId = await _resolveProjectId();
+    if (projectId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aucun projet actif. Complétez d\'abord le Niveau 1.'),
+        ),
+      );
+      return;
+    }
+
+    final payload = {
+      'sectionStatus': _sectionStatus,
+      'section1': {'status': _sectionStatus['section1']},
       'section2': {
+        'status': _sectionStatus['section2'],
         'dateImplantation': _implantDateController.text,
         'gpsX': _gpsXController.text,
         'gpsY': _gpsYController.text,
@@ -539,27 +962,84 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
         'dateFinFouilles': _fouillesFinController.text,
         'fouillesConformes': _fouillesConformes,
         'remarque': _sec2RemarqueController.text,
+        'photo': _photos['section2'],
+        'photoGps': _photosGps['section2'],
       },
-      'section3': {'apriori': _sec3APriori, 'aposteriori': _sec3APosteriori},
-      'section4': {'apriori': _sec4APriori, 'aposteriori': _sec4APosteriori},
-      'section5': {'apriori': _sec5APriori, 'aposteriori': _sec5APosteriori},
-      'section6': _sec6,
-      'section7': {'apriori': _sec7APriori, 'aposteriori': _sec7APosteriori},
-      'section8': {'apriori': _sec8APriori, 'aposteriori': _sec8APosteriori},
-      'section9': _sec9,
-      'section10': _sec10,
-      'section11': {'apriori': _sec11APriori, 'aposteriori': _sec11APosteriori},
-      'section12': _sec12,
+      'section3': {
+        'status': _sectionStatus['section3'],
+        'aprioriDate': _sec3AprioriDateController.text,
+        'aposterioriDate': _sec3AposterioriDateController.text,
+        'apriori': _sec3APriori,
+        'aposteriori': _sec3APosteriori,
+        'photos': {
+          'apriori': _photos['section3Apriori'],
+          'aposteriori': _photos['section3Aposteriori'],
+        },
+        'photosGps': {
+          'apriori': _photosGps['section3Apriori'],
+          'aposteriori': _photosGps['section3Aposteriori'],
+        },
+      },
+      'section4': {
+        'status': _sectionStatus['section4'],
+        'aprioriDate': _sec4AprioriDateController.text,
+        'aposterioriDate': _sec4AposterioriDateController.text,
+        'apriori': _sec4APriori,
+        'aposteriori': _sec4APosteriori,
+        'photo': _photos['section4'],
+        'photoGps': _photosGps['section4'],
+      },
+      'section5': {
+        'status': _sectionStatus['section5'],
+        'aprioriDate': _sec5AprioriDateController.text,
+        'aposterioriDate': _sec5AposterioriDateController.text,
+        'apriori': _sec5APriori,
+        'aposteriori': _sec5APosteriori,
+        'photo': _photos['section5'],
+        'photoGps': _photosGps['section5'],
+      },
+      'section6': {'status': _sectionStatus['section6'], 'questions': _sec6},
+      'section7': {
+        'status': _sectionStatus['section7'],
+        'aprioriDate': _sec7AprioriDateController.text,
+        'aposterioriDate': _sec7AposterioriDateController.text,
+        'apriori': _sec7APriori,
+        'aposteriori': _sec7APosteriori,
+      },
+      'section8': {
+        'status': _sectionStatus['section8'],
+        'aprioriDate': _sec8AprioriDateController.text,
+        'aposterioriDate': _sec8AposterioriDateController.text,
+        'apriori': _sec8APriori,
+        'aposteriori': _sec8APosteriori,
+      },
+      'section9': {'status': _sectionStatus['section9'], 'questions': _sec9},
+      'section10': {'status': _sectionStatus['section10'], 'questions': _sec10},
+      'section11': {
+        'status': _sectionStatus['section11'],
+        'aprioriDate': _sec11AprioriDateController.text,
+        'aposterioriDate': _sec11AposterioriDateController.text,
+        'apriori': _sec11APriori,
+        'aposteriori': _sec11APosteriori,
+        'photo': _photos['section11'],
+        'photoGps': _photosGps['section11'],
+      },
+      'section12': {'status': _sectionStatus['section12'], 'questions': _sec12},
       'section13': {'avant': _sec13Avant, 'pendant': _sec13Pendant},
       'section14': _sec14,
       'section15': {
         'appreciation': _appreciationAvancement,
         'recommandation': _recommandation,
+        'autreRecommandation': _recommandation == 'Autre (à préciser)'
+            ? _autreRecommandationController.text
+            : '',
       },
+      'photos': _photos,
+      'photosGps': _photosGps,
     };
 
     await _dbService.insert('controle_travaux', {
-      'projectId': 1,
+      'projectId': projectId,
       'section': 'Niveau 3 Controle des travaux',
       'status': 1,
       'checkedAt': DateTime.now().toIso8601String(),
@@ -577,244 +1057,304 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
     return Scaffold(
       appBar: AppBar(title: const Text('Niveau 3 - Contrôle des travaux')),
       body: ListView(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         children: [
-          Card(
-            child: ExpansionTile(
-              title: const Text('1. Installation du chantier'),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.green.shade100),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SwitchListTile(
-                  title: const Text('Achevé'),
-                  value: _sec1Acheve,
-                  onChanged: (v) => setState(() {
-                    _sec1Acheve = v;
-                    if (v) _sec1EnCours = false;
-                  }),
+                Text(
+                  'Questionnaire de contrôle des travaux',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
-                SwitchListTile(
-                  title: const Text('En cours'),
-                  value: _sec1EnCours,
-                  onChanged: (v) => setState(() {
-                    _sec1EnCours = v;
-                    if (v) _sec1Acheve = false;
-                  }),
+                SizedBox(height: 6),
+                Text(
+                  'Chaque section reprend le formulaire terrain avec état, réponses, remarques, dates de phase et photos obligatoires.',
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 16),
+          _buildSectionCard(
+            title: '1. Installation du chantier',
+            sectionKey: 'section1',
+            initiallyExpanded: true,
+            children: const [
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(
+                  'Section de suivi de l’état global de l’installation du chantier.',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildSectionCard(
+            title: '2. Implantation et terrassement',
+            sectionKey: 'section2',
+            children: [
+              _buildTextField(
+                'Date d’implantation de l’ouvrage',
+                _implantDateController,
+              ),
+              _buildTextField('Coordonnées GPS (X)', _gpsXController),
+              _buildTextField('Coordonnées GPS (Y)', _gpsYController),
+              _buildTextField(
+                'Date de démarrage des fouilles',
+                _fouillesDebutController,
+              ),
+              _buildTextField(
+                'Date de fin des fouilles',
+                _fouillesFinController,
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                child: DropdownButtonFormField<String>(
+                  initialValue: _fouillesConformes,
+                  decoration: const InputDecoration(
+                    labelText: 'Les fouilles sont conformes au plan',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const ['Oui', 'Non']
+                      .map(
+                        (value) =>
+                            DropdownMenuItem(value: value, child: Text(value)),
+                      )
+                      .toList(),
+                  onChanged: (value) =>
+                      setState(() => _fouillesConformes = value ?? 'Oui'),
+                ),
+              ),
+              _buildTextField('Remarque', _sec2RemarqueController, maxLines: 3),
+              _buildPhotoField('section2', 'Photo'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildSectionCard(
+            title: '3. Béton en fondation et maçonnerie en fondation',
+            sectionKey: 'section3',
+            children: [
+              _buildPhaseHeader('A priori', _sec3AprioriDateController),
+              _buildQuestionList(_sec3APriori),
+              _buildPhotoField('section3Apriori', 'Photo'),
+              _buildPhaseHeader('A posteriori', _sec3AposterioriDateController),
+              _buildQuestionList(_sec3APosteriori),
+              _buildPhotoField('section3Aposteriori', 'Photo'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildSectionCard(
+            title: '4. Béton et maçonnerie en élévation',
+            sectionKey: 'section4',
+            children: [
+              _buildPhaseHeader('A priori', _sec4AprioriDateController),
+              _buildQuestionList(_sec4APriori),
+              _buildPhaseHeader('A posteriori', _sec4AposterioriDateController),
+              _buildQuestionList(_sec4APosteriori),
+              _buildPhotoField('section4', 'Photo'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildSectionCard(
+            title: '5. Dalles de plancher (toit)',
+            sectionKey: 'section5',
+            children: [
+              _buildPhaseHeader('A priori', _sec5AprioriDateController),
+              _buildQuestionList(_sec5APriori),
+              _buildPhaseHeader('A posteriori', _sec5AposterioriDateController),
+              _buildQuestionList(_sec5APosteriori),
+              _buildPhotoField('section5', 'Photo'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildSectionCard(
+            title: '6. Enduits',
+            sectionKey: 'section6',
+            children: [_buildQuestionList(_sec6)],
+          ),
+          const SizedBox(height: 12),
+          _buildSectionCard(
+            title: '7. Menuiserie',
+            sectionKey: 'section7',
+            children: [
+              _buildPhaseHeader('A priori', _sec7AprioriDateController),
+              _buildQuestionList(_sec7APriori),
+              _buildPhaseHeader('A posteriori', _sec7AposterioriDateController),
+              _buildQuestionList(_sec7APosteriori),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildSectionCard(
+            title: '8. Plomberie',
+            sectionKey: 'section8',
+            children: [
+              _buildPhaseHeader('A priori', _sec8AprioriDateController),
+              _buildQuestionList(_sec8APriori),
+              _buildPhaseHeader('A posteriori', _sec8AposterioriDateController),
+              _buildQuestionList(_sec8APosteriori),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildSectionCard(
+            title: '9. Peinture',
+            sectionKey: 'section9',
+            children: [_buildQuestionList(_sec9)],
+          ),
+          const SizedBox(height: 12),
+          _buildSectionCard(
+            title: '10. Revêtement',
+            sectionKey: 'section10',
+            children: [_buildQuestionList(_sec10)],
+          ),
+          const SizedBox(height: 12),
+          _buildSectionCard(
+            title: '11. Dispositif de lave-mains (DLM)',
+            sectionKey: 'section11',
+            children: [
+              _buildPhaseHeader('A priori', _sec11AprioriDateController),
+              _buildQuestionList(_sec11APriori),
+              _buildPhaseHeader(
+                'A posteriori',
+                _sec11AposterioriDateController,
+              ),
+              _buildQuestionList(_sec11APosteriori),
+              _buildPhotoField('section11', 'Photo'),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _buildSectionCard(
+            title: '12. Garde-fou',
+            sectionKey: 'section12',
+            children: [_buildQuestionList(_sec12)],
+          ),
           const SizedBox(height: 12),
           Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: ExpansionTile(
-              title: const Text('2. Implantation et terrassement'),
+              title: const Text(
+                '13. Suivi du PGES',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              childrenPadding: const EdgeInsets.only(bottom: 12),
               children: [
-                _buildDateField('Date implantation', _implantDateController),
-                _buildTextField('Coordonnées GPS (X)', _gpsXController),
-                _buildTextField('Coordonnées GPS (Y)', _gpsYController),
-                _buildDateField(
-                  'Date démarrage fouilles',
-                  _fouillesDebutController,
-                ),
-                _buildDateField('Date fin fouilles', _fouillesFinController),
-                SwitchListTile(
-                  title: const Text('Fouilles conformes au plan'),
-                  value: _fouillesConformes,
-                  onChanged: (v) => setState(() => _fouillesConformes = v),
-                ),
-                _buildTextField('Remarque', _sec2RemarqueController),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ExpansionTile(
-              title: const Text('3. Béton fondation et maçonnerie fondation'),
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('A priori'),
-                ),
-                _buildListQuestions('A priori', _sec3APriori),
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('A posteriori'),
-                ),
-                _buildListQuestions('A posteriori', _sec3APosteriori),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ExpansionTile(
-              title: const Text('4. Béton et maçonnerie en élévation'),
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('A priori'),
-                ),
-                _buildListQuestions('A priori', _sec4APriori),
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('A posteriori'),
-                ),
-                _buildListQuestions('A posteriori', _sec4APosteriori),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ExpansionTile(
-              title: const Text('5. Dalles de plancher (toit)'),
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('A priori'),
-                ),
-                _buildListQuestions('A priori', _sec5APriori),
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('A posteriori'),
-                ),
-                _buildListQuestions('A posteriori', _sec5APosteriori),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ExpansionTile(
-              title: const Text('6. Enduits'),
-              children: _sec6.map((e) => _buildYesNoDropdown(e)).toList(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ExpansionTile(
-              title: const Text('7. Menuiserie'),
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('A priori'),
-                ),
-                ..._sec7APriori.map((e) => _buildYesNoDropdown(e)),
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('A posteriori'),
-                ),
-                ..._sec7APosteriori.map((e) => _buildYesNoDropdown(e)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ExpansionTile(
-              title: const Text('8. Plomberie'),
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('A priori'),
-                ),
-                ..._sec8APriori.map((e) => _buildYesNoDropdown(e)),
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('A posteriori'),
-                ),
-                ..._sec8APosteriori.map((e) => _buildYesNoDropdown(e)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ExpansionTile(
-              title: const Text('9. Peinture'),
-              children: _sec9.map((e) => _buildYesNoDropdown(e)).toList(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ExpansionTile(
-              title: const Text('10. Revêtement'),
-              children: _sec10.map((e) => _buildYesNoDropdown(e)).toList(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ExpansionTile(
-              title: const Text('11. Dispositif de lave-mains (DLM)'),
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('A priori'),
-                ),
-                ..._sec11APriori.map((e) => _buildYesNoDropdown(e)),
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('A posteriori'),
-                ),
-                ..._sec11APosteriori.map((e) => _buildYesNoDropdown(e)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ExpansionTile(
-              title: const Text('12. Garde-fou'),
-              children: _sec12.map((e) => _buildYesNoDropdown(e)).toList(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ExpansionTile(
-              title: const Text('13. Suivi du PGES'),
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('Avant les travaux'),
-                ),
-                ..._sec13Avant.map((e) => _buildYesNoDropdown(e)),
-                const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Text('Pendant les travaux'),
-                ),
-                ..._sec13Pendant.map((e) => _buildYesNoDropdown(e)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ExpansionTile(
-              title: const Text('14. Suivi du MGP'),
-              children: _sec14.map((e) => _buildYesNoDropdown(e)).toList(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: ExpansionTile(
-              title: const Text('15. Appréciation du niveau d’avancement'),
-              children: [
-                const SizedBox(height: 8),
-                _buildDropdown(
-                  'Appreciation',
-                  _appreciationAvancement,
-                  _appreciationOptions,
-                  (val) => setState(
-                    () => _appreciationAvancement =
-                        val ?? _appreciationAvancement,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Text(
+                    'Avant les travaux',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   ),
                 ),
-                const SizedBox(height: 12),
-                _buildDropdown(
-                  'Recommandation',
-                  _recommandation,
-                  _recommandationOptions,
-                  (val) =>
-                      setState(() => _recommandation = val ?? _recommandation),
+                _buildQuestionList(_sec13Avant),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Text(
+                    'Pendant les travaux',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
                 ),
-                const SizedBox(height: 12),
+                _buildQuestionList(_sec13Pendant),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: ExpansionTile(
+              title: const Text(
+                '14. Suivi du Mécanisme de Gestion des Plaintes (MGP)',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              childrenPadding: const EdgeInsets.only(bottom: 12),
+              children: [_buildQuestionList(_sec14)],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: ExpansionTile(
+              title: const Text(
+                '15. Appréciation du niveau d’avancement',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              childrenPadding: const EdgeInsets.only(bottom: 12),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
+                  ),
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _appreciationAvancement,
+                    decoration: const InputDecoration(
+                      labelText: 'Appréciation du niveau d’avancement',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const ['Satisfaisant', 'Non satisfaisant']
+                        .map(
+                          (value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(value),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) => setState(
+                      () => _appreciationAvancement = value ?? 'Satisfaisant',
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
+                  ),
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _recommandation,
+                    decoration: const InputDecoration(
+                      labelText: 'Principale recommandation',
+                      border: OutlineInputBorder(),
+                    ),
+                    items:
+                        const [
+                              'Mobiliser le personnel requis',
+                              'Alimenter le chantier en matériaux manquants',
+                              'Accélérer les travaux',
+                              'Corriger les imperfections constatées',
+                              'Autre (à préciser)',
+                            ]
+                            .map(
+                              (value) => DropdownMenuItem(
+                                value: value,
+                                child: Text(value),
+                              ),
+                            )
+                            .toList(),
+                    onChanged: (value) => setState(
+                      () => _recommandation =
+                          value ?? 'Mobiliser le personnel requis',
+                    ),
+                  ),
+                ),
                 if (_recommandation == 'Autre (à préciser)')
                   _buildTextField(
                     'Préciser la recommandation',
-                    TextEditingController(),
+                    _autreRecommandationController,
+                    maxLines: 2,
                   ),
-                const SizedBox(height: 8),
               ],
             ),
           ),
@@ -823,52 +1363,14 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
             onPressed: _saveNiveau3,
             child: const Text('Enregistrer Niveau 3'),
           ),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: () => Navigator.pushNamed(context, '/niveau4'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text('Aller au Niveau 4 - Réception'),
+          ),
           const SizedBox(height: 24),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTextField(String label, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4),
-      child: TextField(
-        controller: controller,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDateField(String label, TextEditingController controller) {
-    return _buildTextField(label, controller);
-  }
-
-  Widget _buildDropdown(
-    String label,
-    String value,
-    List<String> items,
-    ValueChanged<String?> onChanged,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12.0),
-      child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: value,
-            isExpanded: true,
-            onChanged: onChanged,
-            items: items
-                .map((item) => DropdownMenuItem(value: item, child: Text(item)))
-                .toList(),
-          ),
-        ),
       ),
     );
   }

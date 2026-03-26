@@ -179,11 +179,34 @@ class _Niveau2OrganisationChantierState
     super.dispose();
   }
 
+  Future<int?> _resolveProjectId() async {
+    final currentProjectId = await _dbService.getCurrentProjectId();
+    if (currentProjectId != null) return currentProjectId;
+
+    final latestProjectId = await _dbService.getLatestProjectId();
+    if (latestProjectId != null) {
+      await _dbService.setCurrentProjectId(latestProjectId);
+      return latestProjectId;
+    }
+    return null;
+  }
+
   Future<void> _savePersonnel() async {
     if (!_personnelForm.currentState!.validate()) return;
 
+    final projectId = await _resolveProjectId();
+    if (projectId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aucun projet actif. Complétez d\'abord le Niveau 1.'),
+        ),
+      );
+      return;
+    }
+
     await _dbService.insert('personnel', {
-      'projectId': 1,
+      'projectId': projectId,
       'nom': _nomPersonnelController.text.trim(),
       'fonction': _fonctionPersonnel,
       'dateArrivee': _dateArriveeController.text.trim(),
@@ -206,9 +229,20 @@ class _Niveau2OrganisationChantierState
   }
 
   Future<void> _saveEquipementsChecklist() async {
+    final projectId = await _resolveProjectId();
+    if (projectId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aucun projet actif. Complétez d\'abord le Niveau 1.'),
+        ),
+      );
+      return;
+    }
+
     for (final item in _equipementChecklist) {
       await _dbService.insert('equipement', {
-        'projectId': 1,
+        'projectId': projectId,
         'nom': item['nom'],
         'etat': item['etat'],
         'remarque': item['remarque'],
@@ -222,9 +256,20 @@ class _Niveau2OrganisationChantierState
   }
 
   Future<void> _saveMateriauxChecklist() async {
+    final projectId = await _resolveProjectId();
+    if (projectId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aucun projet actif. Complétez d\'abord le Niveau 1.'),
+        ),
+      );
+      return;
+    }
+
     for (final item in _materiauxChecklist) {
       await _dbService.insert('materiaux', {
-        'projectId': 1,
+        'projectId': projectId,
         'nom': item['nom'],
         'quantite': int.tryParse(item['quantite']?.toString() ?? '') ?? 0,
         'qualite': item['qualite'],

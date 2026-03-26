@@ -52,26 +52,251 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
   String _typeLatrines = 'Semi-enterrée';
   bool _destructionAncienne = false;
   bool _constructionMur = false;
-  final List<String> _wilayas = ['Nouakchott', 'Nouadhibou', 'Néma'];
-  final Map<String, List<String>> _moughataas = {
-    'Nouakchott': ['Arafat', 'El Mina', 'Saganeit'],
-    'Nouadhibou': ['Nouadhibou'],
-    'Néma': ['Néma'],
-  };
-  final Map<String, List<String>> _communes = {
-    'Arafat': ['Commune 1', 'Commune 2'],
-    'El Mina': ['Commune 1', 'Commune 2'],
-    'Saganeit': ['Commune 1'],
-    'Nouadhibou': ['Commune 1'],
-    'Néma': ['Commune 1'],
-  };
-  final Map<String, List<String>> _localites = {
-    'Commune 1': ['Localité A', 'Localité B'],
-    'Commune 2': ['Localité C'],
-  };
+  List<String> _wilayas = [];
+  List<String> _moughataas = [];
+  List<String> _communes = [];
+  List<String> _localites = [];
+  List<String> _sitesInfrastructure = [];
 
-  String get _codeANSADE =>
-      '${_wilaya?.substring(0, 2) ?? '__'}-${_moughataa?.substring(0, 2) ?? '__'}-${_commune?.substring(0, 2) ?? '__'}';
+  final Map<String, int> _wilayaIds = {};
+  final Map<String, int> _moughataaIds = {};
+  final Map<String, int> _communeIds = {};
+  final Map<String, int> _localiteIds = {};
+  final Map<String, String?> _localiteCodeAnsade = {};
+  final Map<String, String> _siteLabelsToName = {};
+  final Map<String, int> _siteLabelsToId = {};
+  final Map<String, String?> _siteLabelsToType = {};
+  final Map<String, String?> _siteLabelsToCode = {};
+
+  String? _siteSelectionne;
+  bool _isGeoLoading = true;
+
+  bool get _isEcole => _etablissement == 'Ecole fondamentale';
+  bool get _isStructureSante =>
+      _etablissement == 'Centre de santé' || _etablissement == 'Poste de Santé';
+
+  List<String>? _infrastructureTypesForEtablissement() {
+    switch (_etablissement) {
+      case 'Ecole fondamentale':
+        return const ['ECOLE'];
+      case 'Centre de santé':
+        return const ['CENTRE DE SANTE', 'CENTRE DE SANTÉ'];
+      case 'Poste de Santé':
+        return const ['POSTE DE SANTE', 'POSTE DE SANTÉ'];
+      case 'Gare routière':
+        return const ['GARE ROUTIERE', 'GARE ROUTIÈRE'];
+      case 'Marché':
+        return const ['MARCHE', 'MARCHÉ'];
+      case 'Mosquée':
+        return const ['MOSQUEE', 'MOSQUÉE'];
+      case 'Bâtiment administratif':
+        return const ['BATIMENT ADMINISTRATIF', 'BÂTIMENT ADMINISTRATIF'];
+      default:
+        return null;
+    }
+  }
+
+  String get _codeANSADE => _localiteCodeAnsade[_localite] ?? '-';
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeForm();
+  }
+
+  Future<void> _initializeForm() async {
+    await _loadWilayas();
+    await _prefillFromConfiguredSite();
+  }
+
+  Future<void> _prefillFromConfiguredSite() async {
+    final configuredWilaya = await _dbService.getConfigValue('site.wilaya');
+    final configuredMoughataa = await _dbService.getConfigValue(
+      'site.moughataa',
+    );
+    final configuredCommune = await _dbService.getConfigValue('site.commune');
+    final configuredLocalite = await _dbService.getConfigValue('site.localite');
+
+    if (!mounted) return;
+
+    if (configuredWilaya != null &&
+        configuredWilaya.isNotEmpty &&
+        _wilayas.contains(configuredWilaya)) {
+      setState(() {
+        _wilaya = configuredWilaya;
+      });
+      await _loadMoughataas(configuredWilaya);
+    }
+
+    if (configuredMoughataa != null &&
+        configuredMoughataa.isNotEmpty &&
+        _moughataas.contains(configuredMoughataa)) {
+      setState(() {
+        _moughataa = configuredMoughataa;
+      });
+      await _loadCommunes(configuredMoughataa);
+    }
+
+    if (configuredCommune != null &&
+        configuredCommune.isNotEmpty &&
+        _communes.contains(configuredCommune)) {
+      setState(() {
+        _commune = configuredCommune;
+      });
+      await _loadLocalites(configuredCommune);
+    }
+
+    if (configuredLocalite != null &&
+        configuredLocalite.isNotEmpty &&
+        _localites.contains(configuredLocalite)) {
+      setState(() {
+        _localite = configuredLocalite;
+      });
+      await _loadSitesInfrastructure(configuredLocalite);
+    }
+  }
+
+  Future<void> _loadWilayas() async {
+    setState(() {
+      _isGeoLoading = true;
+    });
+
+    final rows = await _dbService.getWilayas();
+    if (!mounted) return;
+
+    setState(() {
+      _wilayaIds
+        ..clear()
+        ..addEntries(
+          rows.map((row) {
+            final name = (row['intitule_fr']?.toString().isNotEmpty ?? false)
+                ? row['intitule_fr'].toString()
+                : row['intitule'].toString();
+            return MapEntry(name, (row['id'] as int?) ?? 0);
+          }),
+        );
+      _wilayas = _wilayaIds.keys.toList();
+      _isGeoLoading = false;
+    });
+  }
+
+  Future<void> _loadMoughataas(String wilaya) async {
+    final wilayaId = _wilayaIds[wilaya];
+    if (wilayaId == null) return;
+
+    final rows = await _dbService.getMoughatas(wilayaId);
+    if (!mounted) return;
+
+    setState(() {
+      _moughataaIds
+        ..clear()
+        ..addEntries(
+          rows.map((row) {
+            final name = (row['intitule_fr']?.toString().isNotEmpty ?? false)
+                ? row['intitule_fr'].toString()
+                : row['intitule'].toString();
+            return MapEntry(name, (row['id'] as int?) ?? 0);
+          }),
+        );
+      _moughataas = _moughataaIds.keys.toList();
+      _moughataa = null;
+      _commune = null;
+      _localite = null;
+      _communes = [];
+      _localites = [];
+      _sitesInfrastructure = [];
+      _siteSelectionne = null;
+      _siteLabelsToName.clear();
+      _localiteCodeAnsade.clear();
+    });
+  }
+
+  Future<void> _loadCommunes(String moughataa) async {
+    final moughataaId = _moughataaIds[moughataa];
+    if (moughataaId == null) return;
+
+    final rows = await _dbService.getCommunes(moughataaId);
+    if (!mounted) return;
+
+    setState(() {
+      _communeIds
+        ..clear()
+        ..addEntries(
+          rows.map((row) {
+            final name = (row['intitule_fr']?.toString().isNotEmpty ?? false)
+                ? row['intitule_fr'].toString()
+                : row['intitule'].toString();
+            return MapEntry(name, (row['id'] as int?) ?? 0);
+          }),
+        );
+      _communes = _communeIds.keys.toList();
+      _commune = null;
+      _localite = null;
+      _localites = [];
+      _sitesInfrastructure = [];
+      _siteSelectionne = null;
+      _siteLabelsToName.clear();
+      _localiteCodeAnsade.clear();
+    });
+  }
+
+  Future<void> _loadLocalites(String commune) async {
+    final communeId = _communeIds[commune];
+    if (communeId == null) return;
+
+    final rows = await _dbService.getLocalites(communeId);
+    if (!mounted) return;
+
+    setState(() {
+      _localiteCodeAnsade.clear();
+      _localiteIds.clear();
+      _localites = rows.map((row) {
+        final name = (row['intitule_fr']?.toString().isNotEmpty ?? false)
+            ? row['intitule_fr'].toString()
+            : row['intitule'].toString();
+        _localiteIds[name] = (row['id'] as int?) ?? 0;
+        _localiteCodeAnsade[name] = row['code_ansade']?.toString();
+        return name;
+      }).toList();
+      _localite = null;
+      _sitesInfrastructure = [];
+      _siteSelectionne = null;
+      _siteLabelsToName.clear();
+    });
+  }
+
+  Future<void> _loadSitesInfrastructure(String localite) async {
+    final localiteId = _localiteIds[localite];
+    if (localiteId == null) return;
+
+    final rows = await _dbService.getInfrastructures(
+      localiteId,
+      infrastructureTypes: _infrastructureTypesForEtablissement(),
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _siteLabelsToName.clear();
+      _siteLabelsToId.clear();
+      _siteLabelsToType.clear();
+      _siteLabelsToCode.clear();
+      _sitesInfrastructure = rows.map((row) {
+        final id = (row['id'] as int?) ?? 0;
+        final nom = row['intitule_infra_publ']?.toString() ?? '';
+        final type = row['infra_publ']?.toString() ?? '';
+        final code = row['code_infra_publ']?.toString();
+        final label = (code != null && code.isNotEmpty)
+            ? '$nom ($type - $code)'
+            : '$nom ($type)';
+        _siteLabelsToName[label] = nom;
+        _siteLabelsToId[label] = id;
+        _siteLabelsToType[label] = type;
+        _siteLabelsToCode[label] = code;
+        return label;
+      }).toList();
+      _siteSelectionne = null;
+    });
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
@@ -84,9 +309,19 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
     };
 
     final projectId = await _dbService.insert('project', projectData);
+    await _dbService.setCurrentProjectId(projectId);
 
     await _dbService.insert('donnees_generales', {
       'projectId': projectId,
+      'wilayaId': _wilayaIds[_wilaya],
+      'moughataaId': _moughataaIds[_moughataa],
+      'communeId': _communeIds[_commune],
+      'localiteId': _localiteIds[_localite],
+      'codeAnsade': _codeANSADE,
+      'etablissement': _etablissement,
+      'infrastructureId': _siteLabelsToId[_siteSelectionne],
+      'infrastructureType': _siteLabelsToType[_siteSelectionne],
+      'infrastructureCode': _siteLabelsToCode[_siteSelectionne],
       'intituleProjet': _intituleProjetController.text.trim(),
       'marcheTravaux': _marcheTravauxController.text.trim(),
       'numeroMarche': _numeroMarcheController.text.trim(),
@@ -107,6 +342,10 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
       'autrePreciser': _autrePreciserController.text.trim(),
       'destructionAnciennes': _destructionAncienne ? 'Oui' : 'Non',
       'constructionMur': _constructionMur ? 'Oui' : 'Non',
+      'codeMesre': _codeMesreController.text.trim(),
+      'codeMs': _codeMsController.text.trim(),
+      'effectif': int.tryParse(_effectifController.text) ?? 0,
+      'nbPotentiels': int.tryParse(_nbPotentielsController.text) ?? 0,
       'createdAt': DateTime.now().toIso8601String(),
     });
 
@@ -161,50 +400,80 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 8),
+              if (_isGeoLoading)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 12),
+                  child: LinearProgressIndicator(),
+                ),
+              if (!_isGeoLoading && _wilayas.isEmpty)
+                Card(
+                  color: Colors.orange.shade50,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Aucune donnée géographique chargée.',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Touchez "Réessayer" pour recharger la base de référence (Wilaya/Moughataa/Commune/Localité).',
+                        ),
+                        const SizedBox(height: 8),
+                        ElevatedButton.icon(
+                          onPressed: _loadWilayas,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Réessayer'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               _buildDropdown('Wilaya', _wilaya, _wilayas, (val) {
                 setState(() {
                   _wilaya = val;
-                  _moughataa = null;
-                  _commune = null;
-                  _localite = null;
                 });
+                if (val != null) {
+                  _loadMoughataas(val);
+                }
               }),
               const SizedBox(height: 8),
-              _buildDropdown(
-                'Moughataa',
-                _moughataa,
-                _wilaya != null ? _moughataas[_wilaya] : null,
-                (val) {
-                  setState(() {
-                    _moughataa = val;
-                    _commune = null;
-                    _localite = null;
-                  });
-                },
-              ),
+              _buildDropdown('Moughataa', _moughataa, _moughataas, (val) {
+                setState(() {
+                  _moughataa = val;
+                });
+                if (val != null) {
+                  _loadCommunes(val);
+                }
+              }),
               const SizedBox(height: 8),
-              _buildDropdown(
-                'Commune',
-                _commune,
-                _moughataa != null ? _communes[_moughataa] : null,
-                (val) {
-                  setState(() {
-                    _commune = val;
-                    _localite = null;
-                  });
-                },
-              ),
+              _buildDropdown('Commune', _commune, _communes, (val) {
+                setState(() {
+                  _commune = val;
+                });
+                if (val != null) {
+                  _loadLocalites(val);
+                }
+              }),
               const SizedBox(height: 8),
-              _buildDropdown(
-                'Localité',
-                _localite,
-                _commune != null ? _localites[_commune] : null,
-                (val) {
-                  setState(() {
-                    _localite = val;
-                  });
-                },
-              ),
+              _buildDropdown('Localité', _localite, _localites, (val) {
+                setState(() {
+                  _localite = val;
+                });
+                if (val != null) {
+                  _loadSitesInfrastructure(val);
+                }
+              }),
+              if (_commune != null && _localites.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Aucune localité trouvée pour cette commune dans le fichier ANSADE.',
+                    style: TextStyle(color: Colors.orange),
+                  ),
+                ),
               const SizedBox(height: 8),
               TextFormField(
                 decoration: InputDecoration(
@@ -227,10 +496,37 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
                   'Bâtiment administratif',
                 ],
                 (val) {
-                  setState(() => _etablissement = val ?? _etablissement);
+                  final newValue = val ?? _etablissement;
+                  setState(() => _etablissement = newValue);
+                  if (_localite != null) {
+                    _loadSitesInfrastructure(_localite!);
+                  }
                 },
               ),
               const SizedBox(height: 16),
+              _buildDropdown(
+                'Site référencé (optionnel)',
+                _siteSelectionne,
+                _sitesInfrastructure,
+                (val) {
+                  setState(() {
+                    _siteSelectionne = val;
+                    if (val != null) {
+                      _projectNameController.text =
+                          _siteLabelsToName[val] ?? '';
+                    }
+                  });
+                },
+              ),
+              if (_localite != null && _sitesInfrastructure.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Aucun site référencé trouvé pour cette localité.',
+                    style: TextStyle(color: Colors.orange),
+                  ),
+                ),
+              const SizedBox(height: 8),
               TextFormField(
                 controller: _projectNameController,
                 decoration: const InputDecoration(labelText: 'Nom du site *'),
@@ -247,30 +543,34 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
                     (v == null || v.trim().isEmpty) ? 'Champ requis' : null,
               ),
               const SizedBox(height: 8),
-              TextFormField(
-                controller: _codeMesreController,
-                decoration: const InputDecoration(
-                  labelText: 'Code MESRE',
-                  hintText: 'En attendant codification MESRE',
+              if (_isEcole) ...[
+                TextFormField(
+                  controller: _codeMesreController,
+                  decoration: const InputDecoration(
+                    labelText: 'Code MESRE',
+                    hintText: 'En attendant codification MESRE',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _codeMsController,
-                decoration: const InputDecoration(
-                  labelText: 'Code MS',
-                  hintText: 'En attendant codification MS',
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _effectifController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Effectif de l\'école',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _effectifController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Effectif de l\'école',
+                const SizedBox(height: 8),
+              ],
+              if (_isStructureSante) ...[
+                TextFormField(
+                  controller: _codeMsController,
+                  decoration: const InputDecoration(
+                    labelText: 'Code MS',
+                    hintText: 'En attendant codification MS',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
+                const SizedBox(height: 8),
+              ],
               TextFormField(
                 controller: _nbPotentielsController,
                 keyboardType: TextInputType.number,
