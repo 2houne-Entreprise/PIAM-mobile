@@ -8,12 +8,13 @@
 5. [Niveau 1 - Données générales](#niveau1)
 6. [Niveau 2 - Organisation du chantier](#niveau2)
 7. [Niveau 3 - Contrôle des travaux](#niveau3)
-8. [Synchronisation et sauvegarde](#synchronisation)
-9. [Dépannage](#depanage)
+8. [Niveau 4 - Réception](#niveau4)
+9. [Synchronisation et sauvegarde](#synchronisation)
+10. [Dépannage](#depanage)
 
 ## Introduction
 
-L'application **PIAM** est conçue pour faciliter le contrôle qualité des chantiers de construction de latrines publiques. Elle guide les agents de contrôle à travers un processus structuré en trois niveaux pour assurer la qualité et la conformité des ouvrages.
+L'application **PIAM** est conçue pour faciliter le contrôle qualité des chantiers de construction de latrines publiques. Elle guide les agents de contrôle à travers un processus structuré en quatre niveaux pour assurer la qualité, la conformité et la réception des ouvrages.
 
 ### Objectifs de l'application
 - ✅ Collecte systématique des données de chantier
@@ -166,6 +167,27 @@ Pour chaque critère :
 3. **Photo** : Documenter les anomalies
 4. **Évaluation** : Oui/Non + remarque
 
+## Niveau 4 - Réception
+
+Le Niveau 4 permet d'enregistrer la fin du cycle de contrôle avec la réception du chantier.
+
+### Réception technique
+- **Date de réception technique**
+- **Réserves techniques**
+- **Délai de levée des réserves**
+
+### Réception provisoire
+- **Date de réception provisoire**
+- **Réserves provisoires**
+- **Délai de levée des réserves**
+
+### Photos et géolocalisation
+- Prise de photo depuis l'application (caméra)
+- Récupération automatique des coordonnées GPS
+- Association de la photo et des coordonnées à la réception
+
+> **Conseil** : Activez le GPS et la caméra avant de lancer la réception pour éviter les refus de permissions.
+
 ## Synchronisation et sauvegarde
 
 ### Sauvegarde automatique
@@ -183,6 +205,7 @@ Pour chaque critère :
 ### Problèmes courants
 
 #### GPS ne fonctionne pas
+
 - Vérifiez les permissions dans les paramètres
 - Sortez à l'extérieur pour meilleure réception
 - Redémarrez l'application
@@ -239,5 +262,5 @@ Pour chaque critère :
 
 ---
 
-**Version 1.0 - Mars 2026**
+**Version 2.0 - Mars 2026**
 *Guide utilisateur de l'application PIAM*
