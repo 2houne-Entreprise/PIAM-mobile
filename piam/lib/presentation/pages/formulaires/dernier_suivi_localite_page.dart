@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:piam/presentation/widgets/form_header_widget.dart';
+import 'package:piam/services/database_service.dart';
 
 class DernierSuiviLocalitePage extends StatefulWidget {
   final String formulaireId;
@@ -14,15 +16,13 @@ class _DernierSuiviLocalitePageState extends State<DernierSuiviLocalitePage> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
+  int? _localiteId;
+  dynamic _userId;
+
   DateTime? _dateActivite;
-  // ignore: unused_field
   int? _nbHabitants;
-  // ignore: unused_field
   int? _nbLatrines;
-  // ignore: unused_field
-  String? _ameliorations;
-  // ignore: unused_field
-  String? _degradations;
+
   final _ameliorationsController = TextEditingController();
   final _degradationsController = TextEditingController();
 
@@ -46,16 +46,49 @@ class _DernierSuiviLocalitePageState extends State<DernierSuiviLocalitePage> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Questionnaire envoyé'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      Navigator.of(context).pop();
+    
+    try {
+      final db = DatabaseService();
+      
+      final data = {
+        'type': 'dernier_suivi_localite',
+        'data_json': {
+          'dateActivite': _dateActivite?.toIso8601String(),
+          'nbHabitants': _nbHabitants,
+          'nbLatrines': _nbLatrines,
+          'ameliorations': _ameliorationsController.text,
+          'degradations': _degradationsController.text,
+        }.toString(),
+        'date': DateTime.now().toIso8601String(),
+        'user_id': _userId,
+        'localite_id': _localiteId,
+      };
+      
+      await db.insertQuestionnaire(data);
+      await Future.delayed(const Duration(milliseconds: 600));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Dernier Suivi Localité enregistré avec succès'),
+            backgroundColor: Color.fromARGB(255, 16, 185, 129),
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -70,16 +103,26 @@ class _DernierSuiviLocalitePageState extends State<DernierSuiviLocalitePage> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  const Text(
-                    'Point de situation actuel et comparaison avec état initial.',
+                  FormHeaderWidget(
+                    onDataLoaded: (localiteId, userId) {
+                      setState(() {
+                        _localiteId = localiteId;
+                        _userId = userId;
+                      });
+                    },
                   ),
-                  const SizedBox(height: 16),
+                  const Text(
+                    'Point de situation actuel et comparaison avec l\'état initial.',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                  ),
+                  const SizedBox(height: 24),
                   InkWell(
                     onTap: _pickDate,
                     child: InputDecorator(
                       decoration: const InputDecoration(
                         labelText: 'Date de l’activité',
                         prefixIcon: Icon(Icons.calendar_today),
+                        border: OutlineInputBorder(),
                       ),
                       child: Text(
                         _dateActivite != null
@@ -95,48 +138,60 @@ class _DernierSuiviLocalitePageState extends State<DernierSuiviLocalitePage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextFormField(
                     decoration: const InputDecoration(
                       labelText: 'NB d’habitants',
+                      border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.number,
                     validator: (v) =>
                         v == null || v.isEmpty ? 'Champ requis' : null,
                     onSaved: (v) => _nbHabitants = int.tryParse(v ?? ''),
+                    onChanged: (v) => _nbHabitants = int.tryParse(v),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextFormField(
                     decoration: const InputDecoration(
                       labelText: 'NB de latrines',
+                      border: OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.number,
                     validator: (v) =>
                         v == null || v.isEmpty ? 'Champ requis' : null,
                     onSaved: (v) => _nbLatrines = int.tryParse(v ?? ''),
+                    onChanged: (v) => _nbLatrines = int.tryParse(v),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _ameliorationsController,
                     decoration: const InputDecoration(
                       labelText: 'Améliorations constatées',
+                      border: OutlineInputBorder(),
                     ),
-                    maxLines: 2,
+                    maxLines: 3,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _degradationsController,
                     decoration: const InputDecoration(
                       labelText: 'Dégradations constatées',
+                      border: OutlineInputBorder(),
                     ),
-                    maxLines: 2,
+                    maxLines: 3,
                   ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.send),
-                    label: const Text('Envoyer'),
-                    onPressed: _submit,
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.send),
+                      label: const Text('Envoyer'),
+                      onPressed: _submit,
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                    ),
                   ),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),

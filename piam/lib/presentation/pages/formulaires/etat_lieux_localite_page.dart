@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/presentation/widgets/form_header_widget.dart';
 
 class EtatLieuxLocalitePage extends StatefulWidget {
   final String formulaireId;
@@ -15,7 +16,8 @@ class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> {
   bool _isLoading = false;
 
   // Localisation et données admin
-  String? _localisationInfo;
+  int? _localiteId;
+  dynamic _userId;
 
   // Champs principaux
   DateTime? _dateActivite;
@@ -52,28 +54,6 @@ class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> {
   @override
   void initState() {
     super.initState();
-    _loadLocalisation();
-  }
-
-  Future<void> _loadLocalisation() async {
-    final db = DatabaseService();
-    final param = await db.getParametreUtilisateur();
-    setState(() {
-      _localisationInfo = [
-        if (param != null && param['localite_id'] != null)
-          'Localité: ${param['localite_id']}',
-        if (param != null && param['commune_id'] != null)
-          'Commune: ${param['commune_id']}',
-        if (param != null && param['moughataa_id'] != null)
-          'Moughataa: ${param['moughataa_id']}',
-        if (param != null && param['wilaya_id'] != null)
-          'Wilaya: ${param['wilaya_id']}',
-        if (param != null &&
-            param['gps_lat'] != null &&
-            param['gps_lng'] != null)
-          'GPS: ${param['gps_lat']}, ${param['gps_lng']}',
-      ].where((e) => e.isNotEmpty).join(' | ');
-    });
   }
 
   @override
@@ -108,12 +88,10 @@ class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> {
     );
     if (d != null) setState(() => _dateActivite = d);
   }
-
   Future<void> _saveDraft() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     final db = DatabaseService();
-    final param = await db.getParametreUtilisateur();
     final data = {
       'type': 'etat_lieux_localite',
       'data_json': {
@@ -140,8 +118,8 @@ class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> {
         'observations': _observationsController.text,
       }.toString(),
       'date': DateTime.now().toIso8601String(),
-      'user_id': null,
-      'localite_id': param != null ? param['localite_id'] : null,
+      'user_id': _userId,
+      'localite_id': _localiteId,
     };
     await db.insertQuestionnaire(data);
     await Future.delayed(const Duration(milliseconds: 600));
@@ -160,7 +138,6 @@ class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     final db = DatabaseService();
-    final param = await db.getParametreUtilisateur();
     final data = {
       'type': 'etat_lieux_localite',
       'data_json': {
@@ -187,8 +164,8 @@ class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> {
         'observations': _observationsController.text,
       }.toString(),
       'date': DateTime.now().toIso8601String(),
-      'user_id': null,
-      'localite_id': param != null ? param['localite_id'] : null,
+      'user_id': _userId,
+      'localite_id': _localiteId,
     };
     await db.insertQuestionnaire(data);
     await Future.delayed(const Duration(milliseconds: 800));
@@ -215,29 +192,14 @@ class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  if (_localisationInfo != null &&
-                      _localisationInfo!.isNotEmpty)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.green.shade100),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.place, color: Colors.green),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _localisationInfo!,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  FormHeaderWidget(
+                    onDataLoaded: (localiteId, userId) {
+                      setState(() {
+                        _localiteId = localiteId;
+                        _userId = userId;
+                      });
+                    },
+                  ),
                   const SizedBox(height: 12),
                   InkWell(
                     onTap: _pickDate,
