@@ -1,9 +1,14 @@
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../data/reference_data.dart';
 
 class DatabaseService {
+  // Variables en mémoire pour simuler la base de données sur le navigateur Web (Chrome)
+  static Map<String, dynamic>? _webMockParametre;
+  static final List<Map<String, dynamic>> _webMockQuestionnaires = [];
+
   /// Initialise toutes les tables administratives depuis les données statiques
   /// de la classe [ReferenceData] intégrées dans le code.
   /// C'est la méthode recommandée car elle ne dépend d'aucun fichier externe.
@@ -260,6 +265,10 @@ class DatabaseService {
   }
 
   Future<int> insertParametreUtilisateur(Map<String, dynamic> data) async {
+    if (kIsWeb) {
+      _webMockParametre = Map<String, dynamic>.from(data);
+      return 1;
+    }
     final db = await database;
     return await db.insert(
       'parametre_utilisateur',
@@ -269,6 +278,10 @@ class DatabaseService {
   }
 
   Future<int> insertQuestionnaire(Map<String, dynamic> data) async {
+    if (kIsWeb) {
+      _webMockQuestionnaires.add(Map<String, dynamic>.from(data));
+      return _webMockQuestionnaires.length;
+    }
     final db = await database;
     return await db.insert(
       'questionnaires',
@@ -310,6 +323,9 @@ class DatabaseService {
   }
 
   Future<Map<String, dynamic>?> getParametreUtilisateur() async {
+    if (kIsWeb) {
+      return _webMockParametre;
+    }
     final db = await database;
     final res = await db.query(
       'parametre_utilisateur',

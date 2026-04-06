@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../data/reference_data.dart';
+import '../../services/database_service.dart';
 import 'package:geolocator/geolocator.dart';
 
 /// Widget de param\u00e9trage initial utilisant ReferenceData en m\u00e9moire.
@@ -199,16 +200,29 @@ class ParametrageInitialWidgetState
               onPressed: (selectedWilayaId != null &&
                       selectedMoughataaId != null &&
                       selectedCommuneId != null)
-                  ? () {
-                      // Sur web : pas de SQLite, on affiche juste une confirmation
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Paramètres enregistrés !'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                      if (widget.onGoToDashboard != null) {
-                        widget.onGoToDashboard!();
+                  ? () async {
+                      // Sauvegarde la configuration choisie
+                      final db = DatabaseService();
+                      await db.insertParametreUtilisateur({
+                        'wilaya_id': selectedWilayaId,
+                        'moughataa_id': selectedMoughataaId,
+                        'commune_id': selectedCommuneId,
+                        'localite_id': null, // Non sélectionné dans cette vue
+                        'gps_lat': latitude,
+                        'gps_lng': longitude,
+                        'date': DateTime.now().toIso8601String(),
+                      });
+
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Paramètres enregistrés !'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                        if (widget.onGoToDashboard != null) {
+                          widget.onGoToDashboard!();
+                        }
                       }
                     }
                   : null,
