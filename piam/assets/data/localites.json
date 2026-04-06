@@ -1,0 +1,5 @@
+[
+  {"id":1, "nom":"Achweyti", "commune_id":1, "latitude":16.6, "longitude":-7.2},
+  {"id":2, "nom":"Village Test 1", "commune_id":2, "latitude":16.0, "longitude":-7.0},
+  {"id":3, "nom":"Village Test 2", "commune_id":3, "latitude":15.8, "longitude":-6.9}
+]

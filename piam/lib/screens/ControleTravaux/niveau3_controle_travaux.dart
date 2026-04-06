@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../services/sqlite_service.dart';
+import '../../services/database_service.dart';
 
 class Niveau3ControleTravaux extends StatefulWidget {
   static const String routeName = '/niveau3';
@@ -17,7 +17,7 @@ class Niveau3ControleTravaux extends StatefulWidget {
 }
 
 class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
-  final SQLiteService _dbService = SQLiteService();
+  final DatabaseService _dbService = DatabaseService();
   final ImagePicker _picker = ImagePicker();
 
   final Map<String, String> _sectionStatus = {
@@ -927,13 +927,17 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
   }
 
   Future<int?> _resolveProjectId() async {
-    final currentProjectId = await _dbService.getCurrentProjectId();
-    if (currentProjectId != null) return currentProjectId;
-
-    final latestProjectId = await _dbService.getLatestProjectId();
-    if (latestProjectId != null) {
-      await _dbService.setCurrentProjectId(latestProjectId);
-      return latestProjectId;
+    // Nouvelle logique : récupérer l'ID du dernier questionnaire de type 'donnees_generales'
+    final db = await _dbService.database;
+    final result = await db.query(
+      'questionnaires',
+      where: 'type = ?',
+      whereArgs: ['donnees_generales'],
+      orderBy: 'id DESC',
+      limit: 1,
+    );
+    if (result.isNotEmpty) {
+      return result.first['id'] as int?;
     }
     return null;
   }
@@ -1038,12 +1042,10 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
       'photosGps': _photosGps,
     };
 
-    await _dbService.insert('controle_travaux', {
-      'projectId': projectId,
-      'section': 'Niveau 3 Controle des travaux',
-      'status': 1,
-      'checkedAt': DateTime.now().toIso8601String(),
-      'details': jsonEncode(payload),
+    await _dbService.insertQuestionnaire({
+      'type': 'controle_travaux',
+      'data_json': jsonEncode(payload),
+      'date': DateTime.now().toIso8601String(),
     });
 
     if (!mounted) return;

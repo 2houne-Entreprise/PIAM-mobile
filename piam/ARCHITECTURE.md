@@ -1,497 +1,399 @@
-# 🏗️ Architecture Technique - Application PIAM
-
-## Vue d'ensemble
-
-L'application PIAM est une application mobile Flutter native qui suit les principes de Clean Architecture pour assurer maintenabilité, testabilité et évolutivité.
-
-## Architecture en couches
-
-### 1. Couche Présentation (UI)
-**Responsabilités** : Interface utilisateur, gestion d'état, navigation
-
-#### Structure
-```
-screens/
-├── login_screen.dart              # Authentification
-├── parametrage_screen.dart        # Configuration projet
-├── niveau1_donnees_generales.dart  # Données générales
-├── niveau2_organisation_chantier.dart # Organisation
-└── niveau3_controle_travaux.dart   # Contrôle travaux
-```
-
-#### Patterns utilisés
-- **StatefulWidget** : Gestion d'état local
-- **Form validation** : Validation des données utilisateur
-- **ExpansionTile** : Interface accordéon pour sections
-- **FutureBuilder** : Gestion des états de chargement
-
-### 2. Couche Domaine (Business Logic)
-**Responsabilités** : Règles métier, validation, coordination
-
-#### Services métier
-```dart
-// Injection de dépendances
-class ControleTravauxService {
-  final SQLiteService _dbService;
-  final GPSService _gpsService;
-
-  ControleTravauxService(this._dbService, this._gpsService);
-
-  Future<void> saveControleData(Map<String, dynamic> data) async {
-    // Validation métier
-    await _validateData(data);
-
-    // Enrichissement avec GPS
-    final position = await _gpsService.getLastPosition();
-    data['gps'] = {'lat': position.latitude, 'lng': position.longitude};
-
-    // Sauvegarde
-    await _dbService.insert('controle_travaux', data);
-  }
-}
-```
-
-### 3. Couche Données (Data)
-**Responsabilités** : Persistance, API, cache
-
-#### Base de données SQLite
-```sql
--- Tables principales
-CREATE TABLE chantier (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nom_projet TEXT NOT NULL,
-  localisation TEXT,
-  type_ouvrage TEXT,
-  date_debut DATETIME,
-  caracteristiques TEXT, -- JSON
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE controle_travaux (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER,
-  section TEXT,
-  status INTEGER, -- 0:inactif, 1:actif
-  checked_at DATETIME,
-  details TEXT, -- JSON structuré
-  FOREIGN KEY (project_id) REFERENCES chantier(id)
-);
-
-CREATE TABLE photo_gps (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  controle_id INTEGER,
-  latitude REAL,
-  longitude REAL,
-  photo_path TEXT,
-  timestamp DATETIME,
-  FOREIGN KEY (controle_id) REFERENCES controle_travaux(id)
-);
-```
-
-## Flux de données
-
-### 1. Authentification
-```
-UI (LoginScreen) → SecureStorage → ParametrageScreen
-```
-
-### 2. Saisie de données
-```
-UI → Validation → Enrichissement GPS → SQLite → Confirmation
-```
-
-### 3. Synchronisation
-```
-SQLite → Vérification connectivité → API REST → Serveur distant
-```
-
-## Gestion d'état
-
-### Pattern State Management
-L'application utilise un état local simple avec StatefulWidget :
-
-```dart
-class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
-  // État local
-  final Map<String, dynamic> _formData = {};
-
-  // Mise à jour atomique
-  void _updateField(String key, dynamic value) {
-    setState(() => _formData[key] = value);
-  }
-
-  // Validation et sauvegarde
-  Future<void> _saveForm() async {
-    if (_isFormValid()) {
-      await _dbService.saveData(_formData);
-      _showSuccessMessage();
-    }
-  }
-}
-```
-
-### Avantages
-- ✅ Simple et prévisible
-- ✅ Pas de dépendances externes
-- ✅ Performance optimale pour formulaires
-- ✅ Debug facile
-
-## Persistence des données
-
-### Stratégie multi-niveaux
-1. **Mémoire** : État actuel du formulaire
-2. **SQLite** : Données validées localement
-3. **Hive** : Cache pour données fréquentes
-4. **SecureStorage** : Identifiants utilisateur
-
-### Migration de base de données
-```dart
-// Version management
-Future<void> _upgradeDatabase(Database db, int oldVersion, int newVersion) async {
-  if (oldVersion < 2) {
-    await db.execute('ALTER TABLE controle_travaux ADD COLUMN gps_data TEXT');
-  }
-  if (oldVersion < 3) {
-    await db.execute('CREATE TABLE photo_gps (...)');
-  }
-}
-```
-
-## Services externes
-
-### Géolocalisation
-```dart
-class GPSService {
-  static Future<Position> getCurrentPosition() async {
-    // Vérification permissions
-    final hasPermission = await _checkPermissions();
-    if (!hasPermission) throw GPSPermissionDeniedException();
-
-    // Configuration précision
-    const locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 10, // mètres
-    );
-
-    // Récupération position
-    return await Geolocator.getCurrentPosition(
-      locationSettings: locationSettings,
-    );
-  }
-}
-```
-
-### Connectivité réseau
-```dart
-class ConnectivityService {
-  final Connectivity _connectivity = Connectivity();
-  final StreamController<ConnectivityStatus> _statusController =
-      StreamController<ConnectivityStatus>.broadcast();
-
-  Stream<ConnectivityStatus> get status => _statusController.stream;
-
-  void startMonitoring() {
-    _connectivity.onConnectivityChanged.listen(
-      (List<ConnectivityResult> results) {
-        final status = _mapToStatus(results);
-        _statusController.add(status);
-      }
-    );
-  }
-
-  ConnectivityStatus _mapToStatus(List<ConnectivityResult> results) {
-    if (results.contains(ConnectivityResult.wifi)) return ConnectivityStatus.wifi;
-    if (results.contains(ConnectivityResult.mobile)) return ConnectivityStatus.mobile;
-    return ConnectivityStatus.offline;
-  }
-}
-```
-
-## Gestion d'erreurs
-
-### Stratégie globale
-```dart
-class ErrorHandler {
-  static void handleError(BuildContext context, dynamic error) {
-    if (error is GPSPermissionDeniedException) {
-      _showPermissionDialog(context);
-    } else if (error is NetworkException) {
-      _showNetworkError(context);
-    } else {
-      _showGenericError(context, error.toString());
-    }
-  }
-
-  static void _showPermissionDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Permission requise'),
-        content: const Text('L\'application a besoin d\'accéder à votre localisation.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Annuler'),
-          ),
-          TextButton(
-            onPressed: () => Geolocator.openAppSettings(),
-            child: const Text('Paramètres'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-```
-
-### Types d'erreurs personnalisés
-```dart
-class PiamException implements Exception {
-  final String message;
-  final String? code;
-
-  PiamException(this.message, {this.code});
-
-  @override
-  String toString() => 'PiamException: $message${code != null ? ' ($code)' : ''}';
-}
-
-class ValidationException extends PiamException {
-  ValidationException(String field) : super('Champ $field invalide');
-}
-
-class GPSPermissionDeniedException extends PiamException {
-  GPSPermissionDeniedException() : super('Permission GPS refusée');
-}
-```
-
-## Tests et qualité
-
-### Structure des tests
-```
-test/
-├── unit/                    # Tests unitaires
-│   ├── services/
-│   │   ├── sqlite_service_test.dart
-│   │   └── gps_service_test.dart
-│   └── models/
-│       └── chantier_test.dart
-├── integration/             # Tests d'intégration
-│   └── screens/
-│       └── login_flow_test.dart
-└── e2e/                     # Tests end-to-end
-    └── user_journey_test.dart
-```
-
-### Test unitaire exemple
-```dart
-void main() {
-  group('SQLiteService', () {
-    late SQLiteService service;
-    late Database db;
-
-    setUp(() async {
-      service = SQLiteService();
-      db = await service.database;
-      // Setup test data
-    });
-
-    tearDown(() async {
-      // Cleanup
-      await db.delete('test_table');
-    });
-
-    test('should insert and retrieve data', () async {
-      final testData = {'name': 'Test Project', 'status': 1};
-
-      final id = await service.insert('chantier', testData);
-      final retrieved = await service.getById('chantier', id);
-
-      expect(retrieved['name'], equals('Test Project'));
-      expect(retrieved['status'], equals(1));
-    });
-  });
-}
-```
-
-## Performance et optimisation
-
-### Optimisations UI
-- **ListView.builder** : Pour listes longues
-- **const constructors** : Widgets immuables
-- **RepaintBoundary** : Isolation des zones de redessin
-- **Image.memory** : Cache des images
-
-### Optimisations données
-- **IndexedDB** : Requêtes optimisées
-- **Lazy loading** : Chargement progressif
-- **Compression** : Données JSON compressées
-- **Background sync** : Synchronisation non-bloquante
-
-## Sécurité
-
-### Authentification
-- Stockage sécurisé des identifiants
-- Token JWT pour API
-- Expiration automatique des sessions
-
-### Chiffrement
-```dart
-class EncryptionService {
-  static const String _key = 'your-encryption-key';
-
-  static String encrypt(String data) {
-    final key = Key.fromUtf8(_key);
-    final iv = IV.fromLength(16);
-    final encrypter = Encrypter(AES(key));
-
-    return encrypter.encrypt(data, iv: iv).base64;
-  }
-
-  static String decrypt(String encryptedData) {
-    final key = Key.fromUtf8(_key);
-    final iv = IV.fromLength(16);
-    final encrypter = Encrypter(AES(key));
-
-    return encrypter.decrypt64(encryptedData, iv: iv);
-  }
-}
-```
-
-## Déploiement et CI/CD
-
-### Pipeline CI/CD
-```yaml
-# .github/workflows/ci.yml
-name: CI/CD
-
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.35.3'
-      - run: flutter pub get
-      - run: flutter analyze
-      - run: flutter test --coverage
-      - uses: codecov/codecov-action@v3
-
-  build-android:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.35.3'
-      - run: flutter build apk --release
-      - uses: actions/upload-artifact@v3
-        with:
-          name: android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-```
-
-### Configuration de build
-```yaml
-# pubspec.yaml - Configuration avancée
-flutter:
-  uses-material-design: true
-  assets:
-    - assets/images/
-    - assets/icons/
-
-  fonts:
-    - family: Roboto
-      fonts:
-        - asset: fonts/Roboto-Regular.ttf
-        - asset: fonts/Roboto-Bold.ttf
-          weight: 700
-
-dependencies:
-  flutter:
-    sdk: flutter
-  # Core dependencies...
-  flutter_secure_storage: ^10.0.0
-  sqflite: ^2.2.8
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^3.0.0
-  integration_test:
-    sdk: flutter
-```
-
-## Monitoring et analytics
-
-### Suivi des performances
-```dart
-class PerformanceMonitor {
-  static final Map<String, Stopwatch> _timers = {};
-
-  static void startTimer(String key) {
-    _timers[key] = Stopwatch()..start();
-  }
-
-  static void stopTimer(String key) {
-    final timer = _timers[key];
-    if (timer != null) {
-      timer.stop();
-      _logPerformance(key, timer.elapsedMilliseconds);
-    }
-  }
-
-  static void _logPerformance(String operation, int durationMs) {
-    // Log vers service d'analytics
-    analytics.logEvent(
-      name: 'performance_metric',
-      parameters: {
-        'operation': operation,
-        'duration_ms': durationMs,
-      },
-    );
-  }
-}
-```
-
-### Gestion des crashes
-```dart
-void main() {
-  FlutterError.onError = (FlutterErrorDetails details) {
-    // Log l'erreur
-    FirebaseCrashlytics.instance.recordFlutterError(details);
-  };
-
-  runZonedGuarded(() {
-    runApp(const PiamApp());
-  }, (error, stackTrace) {
-    // Gestion des erreurs non gérées
-    FirebaseCrashlytics.instance.recordError(error, stackTrace);
-  });
-}
-```
-
-## Évolutivité
-
-### Architecture modulaire
-- **Feature modules** : Chaque écran = module indépendant
-- **Shared services** : Services communs réutilisables
-- **Plugin architecture** : Extension via plugins
-
-### Migration future
-- **State management** : Migration possible vers BLoC/Provider
-- **Backend** : API REST vers GraphQL
-- **Offline-first** : Amélioration synchronisation
+# 🏗️ ARCHITECTURE COMPLÈTE – APPLICATION PIAM
+
+**Version:** 1.0  
+**Date:** 2026-03-30  
+**Framework:** Flutter 3.x + Dart  
+**Architecture Pattern:** Clean Architecture + BLoC
 
 ---
 
-**Architecture Technique - Version 1.0**
-*Application PIAM - Mars 2026*
+## 🎯 1. PRINCIPES ARCHITECTURAUX
+
+### 1.1 Clean Architecture
+
+```
+Presentation Layer (UI)
+    ↓ (dépend de)
+BLoC/State Management Layer
+    ↓ (dépend de)
+Domain Layer (UseCases)
+    ↓ (dépend de)
+Data Layer (Repositories & DataSources)
+    ↓ (dépend de)
+External Services (API, SQLite, GPS, etc.)
+```
+
+### 1.2 Patterns à utiliser
+
+- **BLoC** pour la gestion d'état (ou Provider si préférence)
+- **Repository Pattern** pour l'abstraction des données
+- **Dependency Injection** (GetIt)
+- **Freezed** pour l'immutabilité des modèles
+- **JSON serialization** pour persistence
+
+### 1.3 Principes SOLID
+
+- **S**ingle Responsibility: Une classe = Une responsabilité
+- **O**pen/Closed: Ouvert à extension, fermé à modification
+- **L**iskov Substitution: Respect des contrats d'interface
+- **I**nterface Segregation: Interfaces spécifiques
+- **D**ependency Inversion: Dépendre d'abstractions
+
+---
+
+## 📁 2. STRUCTURE DES DOSSIERS
+
+```
+lib/
+├─ main.dart                          # Point d'entrée
+├─ bootstrap.dart                     # Initialisation dépendances
+│
+├─ config/
+│  ├─ app_constants.dart              # Constantes
+│  ├─ app_theme.dart                  # Thème Material 3
+│  ├─ app_strings.dart                # Strings localisées
+│  └─ routes.dart                     # Navigation routes
+│
+├─ data/
+│  ├─ datasources/
+│  │  ├─ local/
+│  │  │  ├─ sqlite_service.dart       # SQLite wrapper
+│  │  │  └─ shared_preferences_local.dart
+│  │  └─ remote/
+│  │     ├─ api_client.dart           # HTTP client
+│  │     ├─ api_endpoints.dart        # Endpoints constants
+│  │     └─ api_service.dart          # API calls
+│  ├─ models/
+│  │  ├─ data_models.dart             # Tous les models
+│  │  ├─ formulaire_model.dart        # (si séparé)
+│  │  ├─ localite_model.dart
+│  │  ├─ utilisateur_model.dart
+│  │  ├─ gps_location_model.dart
+│  │  └─ photo_model.dart
+│  └─ repositories/
+│     ├─ formulaire_repository.dart   # Interface + implémentation
+│     ├─ localite_repository.dart
+│     ├─ utilisateur_repository.dart
+│     ├─ auth_repository.dart
+│     ├─ sync_repository.dart
+│     └─ rapports_repository.dart
+│
+├─ domain/
+│  ├─ entities/                       # (Optionnel si same as models)
+│  ├─ repositories/
+│  │  ├─ formulaire_repository.dart   # Interfaces abstraites
+│  │  ├─ localite_repository.dart
+│  │  └─ ...
+│  └─ usecases/
+│     ├─ auth/
+│     │  ├─ login_usecase.dart
+│     │  ├─ logout_usecase.dart
+│     │  ├─ refresh_token_usecase.dart
+│     │  └─ verify_datetime_usecase.dart
+│     ├─ formulaire/
+│     │  ├─ create_formulaire_usecase.dart
+│     │  ├─ update_formulaire_usecase.dart
+│     │  ├─ get_formulaire_usecase.dart
+│     │  ├─ list_formulaires_usecase.dart
+│     │  ├─ submit_formulaire_usecase.dart
+│     │  └─ validate_formulaire_usecase.dart
+│     ├─ localite/
+│     │  ├─ get_localites_usecase.dart
+│     │  ├─ get_localites_filtered_usecase.dart
+│     │  ├─ add_localite_usecase.dart
+│     │  └─ get_localite_details_usecase.dart
+│     ├─ gps/
+│     │  └─ capture_gps_usecase.dart
+│     ├─ photo/
+│     │  ├─ capture_photo_usecase.dart
+│     │  └─ upload_photo_usecase.dart
+│     ├─ sync/
+│     │  ├─ sync_formulaires_usecase.dart
+│     │  ├─ sync_photos_usecase.dart
+│     │  └─ handle_sync_conflict_usecase.dart
+│     ├─ rapports/
+│     │  ├─ generate_rapport_localité_usecase.dart
+│     │  ├─ export_rapport_usecase.dart
+│     │  └─ get_statistics_usecase.dart
+│     └─ parametrage/
+│        └─ save_parametrage_usecase.dart
+│
+├─ presentation/
+│  ├─ bloc/
+│  │  ├─ auth/
+│  │  │  ├─ auth_event.dart
+│  │  │  ├─ auth_state.dart
+│  │  │  └─ auth_bloc.dart
+│  │  ├─ formulaire/
+│  │  │  ├─ formulaire_event.dart
+│  │  │  ├─ formulaire_state.dart
+│  │  │  └─ formulaire_bloc.dart
+│  │  ├─ localite/
+│  │  │  ├─ localite_event.dart
+│  │  │  ├─ localite_state.dart
+│  │  │  └─ localite_bloc.dart
+│  │  ├─ sync/
+│  │  │  ├─ sync_event.dart
+│  │  │  ├─ sync_state.dart
+│  │  │  └─ sync_bloc.dart
+│  │  ├─ gps/
+│  │  │  ├─ gps_event.dart
+│  │  │  ├─ gps_state.dart
+│  │  │  └─ gps_bloc.dart
+│  │  └─ camera/
+│  │     ├─ camera_event.dart
+│  │     ├─ camera_state.dart
+│  │     └─ camera_bloc.dart
+│  ├─ pages/
+│  │  ├─ auth/
+│  │  │  ├─ login_page.dart
+│  │  │  └─ forgot_password_page.dart
+│  │  ├─ parametrage/
+│  │  │  ├─ parametrage_page.dart
+│  │  │  └─ localite_selection_page.dart
+│  │  ├─ dashboard/
+│  │  │  ├─ dashboard_page.dart
+│  │  │  └─ quick_stats_widget.dart
+│  │  ├─ formulaires/
+│  │  │  ├─ base_formulaire_page.dart   # Template réutilisable
+│  │  │  ├─ declenchement_page.dart
+│  │  │  ├─ certification_fdal_page.dart
+│  │  │  ├─ etat_lieux_localite_page.dart
+│  │  │  ├─ etat_lieux_menage_page.dart
+│  │  │  ├─ dernier_suivi_localite_page.dart
+│  │  │  ├─ dernier_suivi_menage_page.dart
+│  │  │  ├─ inventaire_page.dart
+│  │  │  ├─ programmation_travaux_page.dart
+│  │  │  └─ travaux_receptiones_page.dart
+│  │  ├─ rapports/
+│  │  │  ├─ rapports_dashboard_page.dart
+│  │  │  ├─ rapport_localite_page.dart
+│  │  │  ├─ statistiques_page.dart
+│  │  │  └─ export_page.dart
+│  │  └─ parametres/
+│  │     ├─ settings_page.dart
+│  │     ├─ profil_page.dart
+│  │     └─ deconnexion_page.dart
+│  └─ widgets/
+│     ├─ common/
+│     │  ├─ app_bar_custom.dart
+│     │  ├─ bottom_nav_bar.dart
+│     │  ├─ custom_button.dart
+│     │  ├─ custom_text_field.dart
+│     │  ├─ loading_indicator.dart
+│     │  └─ error_dialog.dart
+│     ├─ formulaire_widgets/
+│     │  ├─ formulaire_card.dart
+│     │  ├─ formulaire_status_badge.dart
+│     │  ├─ progress_indicator.dart
+│     │  └─ sync_indicator.dart
+│     ├─ form_fields/
+│     │  ├─ custom_dropdown.dart      # Pas de doublons!
+│     │  ├─ custom_text_field.dart
+│     │  ├─ custom_date_field.dart
+│     │  ├─ custom_number_field.dart
+│     │  ├─ oui_non_selector.dart
+│     │  ├─ gps_widget.dart            # Capture GPS
+│     │  ├─ photo_upload_widget.dart   # Capture photos
+│     │  ├─ checkbox_list_widget.dart
+│     │  ├─ rating_widget.dart         # 1-5 stars
+│     │  └─ signature_pad_widget.dart  # Signature
+│     └─ conditional/
+│        ├─ conditional_field_group.dart  # Affiche/masque basé condition
+│        └─ form_branch_widget.dart       # Branche OUI/NON
+│
+├─ services/
+│  ├─ auth_service.dart               # Gestion auth/tokens
+│  ├─ gps_service.dart                # Geolocator wrapper
+│  ├─ camera_service.dart             # Image picker wrapper
+│  ├─ sync_service.dart               # Synchronisation online/offline
+│  ├─ notifications_service.dart      # Notifications locales
+│  ├─ database_service.dart           # SQLite helper
+│  ├─ storage_service.dart            # Secure storage
+│  └─ logger_service.dart             # Logging
+│
+├─ utils/
+│  ├─ validators.dart
+│  │  ├─ validateEmail()
+│  │  ├─ validatePassword()
+│  │  ├─ validateGPS()
+│  │  ├─ validateDate()
+│  │  ├─ validateDropdownValue()
+│  │  └─ validateFormulaire()
+│  ├─ formatters.dart
+│  │  ├─ formatDate()
+│  │  ├─ formatGPS()
+│  │  ├─ formatMoney()
+│  │  └─ formatFileSize()
+│  ├─ helpers.dart
+│  │  ├─ removeDuplicates()
+│  │  ├─ generateId()
+│  │  ├─ convertModelToJson()
+│  │  └─ mergeConflicts()
+│  ├─ exceptions.dart
+│  │  ├─ AppException
+│  │  ├─ NetworkException
+│  │  ├─ DatabaseException
+│  │  ├─ ValidationException
+│  │  └─ SyncException
+│  └─ extensions.dart
+│     ├─ String extensions
+│     ├─ DateTime extensions
+│     ├─ BuildContext extensions
+│     └─ List extensions
+│
+├─ l10n/
+│  ├─ arb/
+│  │  ├─ app_fr.arb               # Localisations Français
+│  │  └─ app_ar.arb               # Localisations Arabe (optionnel)
+│  └─ gen/
+│     └─ app_localizations.dart   # Generated
+│
+└─ test/
+   ├─ unit/
+   │  ├─ validators_test.dart
+   │  ├─ formatters_test.dart
+   │  └─ models_test.dart
+   ├─ bloc/
+   │  ├─ auth_bloc_test.dart
+   │  ├─ formulaire_bloc_test.dart
+   │  └─ ...
+   ├─ widget/
+   │  ├─ login_page_test.dart
+   │  ├─ dashboard_page_test.dart
+   │  ├─ etat_lieux_menage_page_test.dart
+   │  └─ ...
+   └─ fixture/
+      ├─ mock_data.dart
+      ├─ mock_repositories.dart
+      └─ mock_services.dart
+```
+
+---
+
+## 🔄 3. FLUX DE DONNÉES
+
+### 3.1 Cycle complet d'une action
+
+```
+1. USER INTERACTION
+   ↓
+2. PAGE CALLS BLoC EVENT
+   formulaireBloc.add(CreateFormulaireEvent(...))
+   ↓
+3. BLoC PROCESSES EVENT
+   event → mapEventToState() → emits State
+   ↓
+4. BLoC CALLS USE CASE
+   createFormulaireUseCase(params)
+   ↓
+5. USE CASE CALLS REPOSITORY
+   formulaireRepository.createFormulaire(...)
+   ↓
+6. REPOSITORY CALLS DATA SOURCE
+   localDataSource.saveFormulaire()   (SQLite)
+   OU remoteDataSource.submitFormulaire() (API)
+   ↓
+7. DATA SOURCE PERSISTS/SYNCS
+   → SQLite (local) + cache
+   → API (remote) si online
+   ↓
+8. BLoC EMITS NEW STATE
+   emit(FormulaireCreatedState(...))
+   ↓
+9. PAGE REBUILDS WITH NEW STATE
+   BlocBuilder → Widget tree updates
+   ↓
+10. USER SEES RESULT
+```
+
+### 3.2 Gestion offline/online
+
+```
+USER GOES OFFLINE
+        ↓
+FORMULAIRE SAVED LOCALLY IN SQLITE
+        ↓
+SYNC SERVICE MARKS FOR SYNC
+        ↓
+USER SEES "⚠️ À envoyer"
+        ↓
+USER GOES ONLINE
+        ↓
+SYNC SERVICE DETECTS CONNECTION
+        ↓
+RETRY SEND FORMULAIRE + PHOTOS
+        ↓
+IF SUCCESS
+  → UPDATE STATUS IN SQLITE
+  → USER SEES "✅ Envoyée"
+        ↓
+IF CONFLICT
+  → SHOW MERGE DIALOG
+  → USER CHOOSES (keep local / take server)
+```
+
+---
+
+## ✅ CHECKLIST IMPLÉMENTATION
+
+### Phase 1: Fondation
+- [ ] Setup projet Flutter + dépendances
+- [ ] Créer structure dossiers
+- [ ] Configurer GetIt (DI)
+- [ ] Créer models + exceptions
+- [ ] Setup SQLite local
+
+### Phase 2: Authentification
+- [ ] Créer LoginPage + AuthBloc
+- [ ] Implémenter JWT storage
+- [ ] Setup refresh token
+- [ ] Vérifier date/heure système
+- [ ] Tests login
+
+### Phase 3: Paramétrage
+- [ ] Créer ParametragePage
+- [ ] Dropdowns cascade (Wilaya → Commune)
+- [ ] GPS capture widget
+- [ ] Créer localite widget
+- [ ] Save parametrage local
+
+### Phase 4: Dashboard
+- [ ] Créer DashboardPage
+- [ ] Afficher 9 formulaires
+- [ ] Status badges (brouillon/complet/envoyé)
+- [ ] Bouton rapide stats
+- [ ] Navigation vers formulaires
+
+### Phase 5: Formulaires (Itération par formulaire)
+Pour chaque formulaire:
+- [ ] Créer model
+- [ ] Créer page/widget
+- [ ] Implémenter logique conditionnelle
+- [ ] Ajouter validation
+- [ ] Tester widget
+- [ ] Intégrer à dashboard
+
+### Phase 6: Synchronisation
+- [ ] Créer SyncService
+- [ ] Détecter connexion/déconnexion
+- [ ] Envoyer formulaires en attente
+- [ ] Envoyer photos
+- [ ] Gestion conflits
+
+### Phase 7: Rapports
+- [ ] Créer RapportService
+- [ ] Page statistiques
+- [ ] Export PDF/CSV/Excel
+- [ ] Graphiques
+
+### Phase 8: Tests & Polish
+- [ ] Tests unitaires (80%)
+- [ ] Tests widgets
+- [ ] Intégration offline/online
+- [ ] Performance optimization
+- [ ] Déploiement beta
+
+---
+
+**Document complet et prêt pour mise en œuvre** ✅

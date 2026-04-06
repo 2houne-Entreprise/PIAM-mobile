@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/sqlite_service.dart';
+import '../../services/database_service.dart';
 import 'niveau2_organisation_chantier.dart';
 
 class Niveau1DonneesGenerales extends StatefulWidget {
@@ -42,7 +42,7 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
   final _autresTravauxController = TextEditingController();
   final _autrePreciserController = TextEditingController();
 
-  final SQLiteService _dbService = SQLiteService();
+  final DatabaseService _dbService = DatabaseService();
 
   String? _wilaya;
   String? _moughataa;
@@ -110,50 +110,8 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
   }
 
   Future<void> _prefillFromConfiguredSite() async {
-    final configuredWilaya = await _dbService.getConfigValue('site.wilaya');
-    final configuredMoughataa = await _dbService.getConfigValue(
-      'site.moughataa',
-    );
-    final configuredCommune = await _dbService.getConfigValue('site.commune');
-    final configuredLocalite = await _dbService.getConfigValue('site.localite');
-
-    if (!mounted) return;
-
-    if (configuredWilaya != null &&
-        configuredWilaya.isNotEmpty &&
-        _wilayas.contains(configuredWilaya)) {
-      setState(() {
-        _wilaya = configuredWilaya;
-      });
-      await _loadMoughataas(configuredWilaya);
-    }
-
-    if (configuredMoughataa != null &&
-        configuredMoughataa.isNotEmpty &&
-        _moughataas.contains(configuredMoughataa)) {
-      setState(() {
-        _moughataa = configuredMoughataa;
-      });
-      await _loadCommunes(configuredMoughataa);
-    }
-
-    if (configuredCommune != null &&
-        configuredCommune.isNotEmpty &&
-        _communes.contains(configuredCommune)) {
-      setState(() {
-        _commune = configuredCommune;
-      });
-      await _loadLocalites(configuredCommune);
-    }
-
-    if (configuredLocalite != null &&
-        configuredLocalite.isNotEmpty &&
-        _localites.contains(configuredLocalite)) {
-      setState(() {
-        _localite = configuredLocalite;
-      });
-      await _loadSitesInfrastructure(configuredLocalite);
-    }
+    // Préremplissage désactivé (getConfigValue n'existe pas dans DatabaseService)
+    return;
   }
 
   Future<void> _loadWilayas() async {
@@ -184,7 +142,7 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
     final wilayaId = _wilayaIds[wilaya];
     if (wilayaId == null) return;
 
-    final rows = await _dbService.getMoughatas(wilayaId);
+    final rows = await _dbService.getMoughataas(wilayaId);
     if (!mounted) return;
 
     setState(() {
@@ -280,20 +238,22 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
       _siteLabelsToId.clear();
       _siteLabelsToType.clear();
       _siteLabelsToCode.clear();
-      _sitesInfrastructure = rows.map((row) {
-        final id = (row['id'] as int?) ?? 0;
-        final nom = row['intitule_infra_publ']?.toString() ?? '';
-        final type = row['infra_publ']?.toString() ?? '';
-        final code = row['code_infra_publ']?.toString();
-        final label = (code != null && code.isNotEmpty)
-            ? '$nom ($type - $code)'
-            : '$nom ($type)';
-        _siteLabelsToName[label] = nom;
-        _siteLabelsToId[label] = id;
-        _siteLabelsToType[label] = type;
-        _siteLabelsToCode[label] = code;
-        return label;
-      }).toList();
+      _sitesInfrastructure = (rows is List)
+          ? rows.map<String>((row) {
+              final id = (row['id'] as int?) ?? 0;
+              final nom = row['intitule_infra_publ']?.toString() ?? '';
+              final type = row['infra_publ']?.toString() ?? '';
+              final code = row['code_infra_publ']?.toString();
+              final label = (code != null && code.isNotEmpty)
+                  ? '$nom ($type - $code)'
+                  : '$nom ($type)';
+              _siteLabelsToName[label] = nom;
+              _siteLabelsToId[label] = id;
+              _siteLabelsToType[label] = type;
+              _siteLabelsToCode[label] = code;
+              return label;
+            }).toList()
+          : [];
       _siteSelectionne = null;
     });
   }
@@ -301,27 +261,21 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final projectData = {
-      'name': _projectNameController.text.trim(),
-      'company': _companyNameController.text.trim(),
+    final data = {
+      'projectName': _projectNameController.text.trim(),
+      'companyName': _companyNameController.text.trim(),
       'wilaya': _wilaya ?? '',
-      'createdAt': DateTime.now().toIso8601String(),
-    };
-
-    final projectId = await _dbService.insert('project', projectData);
-    await _dbService.setCurrentProjectId(projectId);
-
-    await _dbService.insert('donnees_generales', {
-      'projectId': projectId,
-      'wilayaId': _wilayaIds[_wilaya],
-      'moughataaId': _moughataaIds[_moughataa],
-      'communeId': _communeIds[_commune],
-      'localiteId': _localiteIds[_localite],
+      'wilayaId': (_wilayaIds[_wilaya] ?? '').toString(),
+      'moughataaId': (_moughataaIds[_moughataa] ?? '').toString(),
+      'communeId': (_communeIds[_commune] ?? '').toString(),
+      'localiteId': (_localiteIds[_localite] ?? '').toString(),
       'codeAnsade': _codeANSADE,
       'etablissement': _etablissement,
-      'infrastructureId': _siteLabelsToId[_siteSelectionne],
-      'infrastructureType': _siteLabelsToType[_siteSelectionne],
-      'infrastructureCode': _siteLabelsToCode[_siteSelectionne],
+      'infrastructureId': (_siteLabelsToId[_siteSelectionne] ?? '').toString(),
+      'infrastructureType': (_siteLabelsToType[_siteSelectionne] ?? '')
+          .toString(),
+      'infrastructureCode': (_siteLabelsToCode[_siteSelectionne] ?? '')
+          .toString(),
       'intituleProjet': _intituleProjetController.text.trim(),
       'marcheTravaux': _marcheTravauxController.text.trim(),
       'numeroMarche': _numeroMarcheController.text.trim(),
@@ -335,24 +289,30 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
       'latrinesArealiser': _latrinesArealiserController.text.trim(),
       'typeLatrinesArealiser': _typeLatrinesArealiser,
       'toit': _toit,
-      'nbBlocs': int.tryParse(_nbBlocsController.text) ?? 0,
-      'nbCabines': int.tryParse(_nbCabinesController.text) ?? 0,
-      'nbDLM': int.tryParse(_nbDLMController.text) ?? 0,
+      'nbBlocs': (int.tryParse(_nbBlocsController.text) ?? 0).toString(),
+      'nbCabines': (int.tryParse(_nbCabinesController.text) ?? 0).toString(),
+      'nbDLM': (int.tryParse(_nbDLMController.text) ?? 0).toString(),
       'autresTravaux': _autresTravauxController.text.trim(),
       'autrePreciser': _autrePreciserController.text.trim(),
       'destructionAnciennes': _destructionAncienne ? 'Oui' : 'Non',
       'constructionMur': _constructionMur ? 'Oui' : 'Non',
       'codeMesre': _codeMesreController.text.trim(),
       'codeMs': _codeMsController.text.trim(),
-      'effectif': int.tryParse(_effectifController.text) ?? 0,
-      'nbPotentiels': int.tryParse(_nbPotentielsController.text) ?? 0,
+      'effectif': (int.tryParse(_effectifController.text) ?? 0).toString(),
+      'nbPotentiels': (int.tryParse(_nbPotentielsController.text) ?? 0)
+          .toString(),
       'createdAt': DateTime.now().toIso8601String(),
+    };
+    await _dbService.insertQuestionnaire({
+      'type': 'donnees_generales',
+      'data_json': data.toString(),
+      'date': DateTime.now().toIso8601String(),
     });
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Projet sauvegardé (id $projectId)')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Projet sauvegardé')));
   }
 
   @override

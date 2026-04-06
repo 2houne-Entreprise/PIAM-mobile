@@ -1,0 +1,12 @@
+[
+  {"id":1, "nom":"Néma", "wilaya_id":7},
+  {"id":2, "nom":"Amourj", "wilaya_id":7},
+  {"id":3, "nom":"Djigueni", "wilaya_id":7},
+  {"id":4, "nom":"Adel Bagrou", "wilaya_id":7},
+  {"id":5, "nom":"Aïoun", "wilaya_id":8},
+  {"id":6, "nom":"Tintane", "wilaya_id":8},
+  {"id":7, "nom":"Kiffa", "wilaya_id":2},
+  {"id":8, "nom":"Aleg", "wilaya_id":3},
+  {"id":9, "nom":"Rosso", "wilaya_id":15},
+  {"id":10, "nom":"Atar", "wilaya_id":1}
+]

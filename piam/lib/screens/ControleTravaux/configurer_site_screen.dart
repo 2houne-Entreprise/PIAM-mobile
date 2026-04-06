@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
-import '../services/sqlite_service.dart';
+import '../../services/database_service.dart';
 import 'niveau1_donnees_generales.dart';
 
 class ConfigurerSiteScreen extends StatefulWidget {
@@ -14,7 +14,7 @@ class ConfigurerSiteScreen extends StatefulWidget {
 }
 
 class _ConfigurerSiteScreenState extends State<ConfigurerSiteScreen> {
-  final SQLiteService _db = SQLiteService();
+  final DatabaseService _db = DatabaseService();
 
   List<String> _wilayas = [];
   List<String> _moughataas = [];
@@ -50,9 +50,7 @@ class _ConfigurerSiteScreenState extends State<ConfigurerSiteScreen> {
         ..clear()
         ..addEntries(
           rows.map((row) {
-            final name = (row['intitule_fr']?.toString().isNotEmpty ?? false)
-                ? row['intitule_fr'].toString()
-                : row['intitule'].toString();
+            final name = row['nom']?.toString() ?? '';
             return MapEntry(name, (row['id'] as int?) ?? 0);
           }),
         );
@@ -63,16 +61,14 @@ class _ConfigurerSiteScreenState extends State<ConfigurerSiteScreen> {
   Future<void> _loadMoughataas(String wilaya) async {
     final id = _wilayaIds[wilaya];
     if (id == null) return;
-    final rows = await _db.getMoughatas(id);
+    final rows = await _db.getMoughataas(id);
     if (!mounted) return;
     setState(() {
       _moughataaIds
         ..clear()
         ..addEntries(
           rows.map((row) {
-            final name = (row['intitule_fr']?.toString().isNotEmpty ?? false)
-                ? row['intitule_fr'].toString()
-                : row['intitule'].toString();
+            final name = row['nom']?.toString() ?? '';
             return MapEntry(name, (row['id'] as int?) ?? 0);
           }),
         );
@@ -95,9 +91,7 @@ class _ConfigurerSiteScreenState extends State<ConfigurerSiteScreen> {
         ..clear()
         ..addEntries(
           rows.map((row) {
-            final name = (row['intitule_fr']?.toString().isNotEmpty ?? false)
-                ? row['intitule_fr'].toString()
-                : row['intitule'].toString();
+            final name = row['nom']?.toString() ?? '';
             return MapEntry(name, (row['id'] as int?) ?? 0);
           }),
         );
@@ -117,9 +111,7 @@ class _ConfigurerSiteScreenState extends State<ConfigurerSiteScreen> {
       _localiteIds.clear();
       _localiteCodeAnsade.clear();
       _localites = rows.map((row) {
-        final name = (row['intitule_fr']?.toString().isNotEmpty ?? false)
-            ? row['intitule_fr'].toString()
-            : row['intitule'].toString();
+        final name = row['nom']?.toString() ?? '';
         _localiteIds[name] = (row['id'] as int?) ?? 0;
         _localiteCodeAnsade[name] = row['code_ansade']?.toString();
         return name;
@@ -156,16 +148,15 @@ class _ConfigurerSiteScreenState extends State<ConfigurerSiteScreen> {
 
   Future<void> _saveConfiguration() async {
     setState(() => _isSaving = true);
-    await _db.setConfigValue('site.wilaya', _wilaya ?? '');
-    await _db.setConfigValue('site.moughataa', _moughataa ?? '');
-    await _db.setConfigValue('site.commune', _commune ?? '');
-    await _db.setConfigValue('site.localite', _localite ?? '');
-    await _db.setConfigValue(
-      'site.codeAnsade',
-      _localite != null ? (_localiteCodeAnsade[_localite] ?? '') : '',
-    );
-    await _db.setConfigValue('site.gps.lat', _gpsLat ?? '');
-    await _db.setConfigValue('site.gps.lng', _gpsLng ?? '');
+    await _db.insertParametreUtilisateur({
+      'wilaya_id': _wilaya != null ? _wilayaIds[_wilaya] : null,
+      'moughataa_id': _moughataa != null ? _moughataaIds[_moughataa] : null,
+      'commune_id': _commune != null ? _communeIds[_commune] : null,
+      'localite_id': _localite != null ? _localiteIds[_localite] : null,
+      'gps_lat': _gpsLat != null ? double.tryParse(_gpsLat!) : null,
+      'gps_lng': _gpsLng != null ? double.tryParse(_gpsLng!) : null,
+      'date': DateTime.now().toIso8601String(),
+    });
     setState(() => _isSaving = false);
 
     if (!mounted) return;
@@ -229,16 +220,44 @@ class _ConfigurerSiteScreenState extends State<ConfigurerSiteScreen> {
             if (val != null) _loadLocalites(val);
           }),
           const SizedBox(height: 10),
-          _dropdown('Localité', _localite, _localites, (val) {
-            setState(() => _localite = val);
-          }),
+          if (_localites.isNotEmpty)
+            _dropdown('Localité', _localite, _localites, (val) {
+              setState(() => _localite = val);
+            }),
           if (_commune != null && _localites.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 6),
-              child: Text(
-                'Localité non retrouvée. Utilisez la localisation GPS ci-dessous.',
-                style: TextStyle(color: Colors.orange),
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Localité non retrouvée. Saisissez une nouvelle localité ou utilisez la localisation GPS.',
+                    style: TextStyle(color: Colors.orange),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  decoration: const InputDecoration(
+                    labelText: 'Nouvelle localité',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (val) {
+                    // Stockez la valeur dans une variable d'état si besoin
+                  },
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.yellowAccent,
+                    borderRadius: BorderRadius.all(Radius.circular(8)),
+                  ),
+                  child: const Text(
+                    'Votre demande sera traitée sous 24 à 48h. Vous recevrez une notification lors de la validation. Consultez régulièrement la liste des localités. En cas de rejet, contactez l\'administrateur.',
+                    style: TextStyle(fontSize: 13, color: Colors.brown),
+                  ),
+                ),
+              ],
             ),
           const SizedBox(height: 10),
           TextFormField(

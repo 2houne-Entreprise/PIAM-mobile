@@ -1,0 +1,805 @@
+{
+  "application": {
+    "name": "PIAM",
+    "version": "1.0",
+    "description": "Application mobile de collecte de données terrain pour assainissement"
+  },
+  "formulaires": {
+    "declenchement": {
+      "id": "declenchement",
+      "titre": "Déclenchement",
+      "description": "Initier une visite / intervention",
+      "icone": "🔵",
+      "couleur": "#3B82F6",
+      "champs": [
+        {
+          "id": "date",
+          "type": "date",
+          "label": "Date",
+          "obligatoire": true,
+          "valeur_defaut": "today",
+          "aide": "Auto-pré-remplie d'aujourd'hui"
+        },
+        {
+          "id": "gps",
+          "type": "gps",
+          "label": "Position GPS",
+          "obligatoire": true,
+          "aide": "Cliquer sur 'Capturer position'"
+        },
+        {
+          "id": "localite",
+          "type": "dropdown",
+          "label": "Localité",
+          "obligatoire": true,
+          "source": "localites",
+          "aide": "Sélectionner une localite"
+        },
+        {
+          "id": "remarques",
+          "type": "texte_long",
+          "label": "Remarques",
+          "obligatoire": false,
+          "max_char": 5000
+        }
+      ]
+    },
+    "certification_fdal": {
+      "id": "certification_fdal",
+      "titre": "Certification FDAL",
+      "description": "Vérifier la certification FDAL",
+      "icone": "🟢",
+      "couleur": "#10B981",
+      "champs": [
+        {
+          "id": "date",
+          "type": "date",
+          "label": "Date",
+          "obligatoire": true
+        },
+        {
+          "id": "gps",
+          "type": "gps",
+          "label": "Position GPS",
+          "obligatoire": true
+        },
+        {
+          "id": "certification_fdal",
+          "type": "oui_non",
+          "label": "Certification FDAL confirmée?",
+          "obligatoire": true
+        },
+        {
+          "id": "raisons_non",
+          "type": "checkboxes",
+          "label": "Raisons (si Non)",
+          "obligatoire": false,
+          "condition": "certification_fdal == 'non'",
+          "options": [
+            {
+              "id": "pas_fonds",
+              "label": "Pas de fonds disponibles"
+            },
+            {
+              "id": "fonds_ailleurs",
+              "label": "Fonds mobilisés ailleurs"
+            },
+            {
+              "id": "admin_retard",
+              "label": "Administration en retard"
+            },
+            {
+              "id": "autre",
+              "label": "Autre"
+            }
+          ]
+        },
+        {
+          "id": "autre_raison",
+          "type": "texte_court",
+          "label": "Autre raison",
+          "obligatoire": false,
+          "condition": "raisons_non.contains('autre')",
+          "max_char": 500
+        }
+      ]
+    },
+    "etat_lieux_localite": {
+      "id": "etat_lieux_localite",
+      "titre": "État des lieux Localité",
+      "description": "Inventaire général de la localité",
+      "icone": "🟡",
+      "couleur": "#FBBF24",
+      "champs": [
+        {
+          "id": "date",
+          "type": "date",
+          "label": "Date",
+          "obligatoire": true
+        },
+        {
+          "id": "gps",
+          "type": "gps",
+          "label": "Position GPS",
+          "obligatoire": true
+        },
+        {
+          "id": "nb_menages",
+          "type": "nombre",
+          "label": "Nombre de ménages",
+          "obligatoire": true,
+          "min": 1,
+          "max": 10000
+        },
+        {
+          "id": "etat_general",
+          "type": "liste",
+          "label": "État général",
+          "obligatoire": true,
+          "options": ["Bon", "Moyen", "Mauvais"]
+        },
+        {
+          "id": "acces_eau",
+          "type": "oui_non",
+          "label": "Accès eau?",
+          "obligatoire": true
+        },
+        {
+          "id": "acces_electricite",
+          "type": "oui_non",
+          "label": "Accès électricité?",
+          "obligatoire": true
+        },
+        {
+          "id": "route_acces",
+          "type": "liste",
+          "label": "État route d'accès",
+          "obligatoire": true,
+          "options": ["Bonne", "Mauvaise", "Inexistante"]
+        },
+        {
+          "id": "notes_terrain",
+          "type": "texte_long",
+          "label": "Notes terrain",
+          "obligatoire": false,
+          "max_char": 5000
+        },
+        {
+          "id": "photos",
+          "type": "photos",
+          "label": "Photos (min 2)",
+          "obligatoire": true,
+          "min_photos": 2,
+          "max_photos": 10,
+          "aide": "Cliquer pour prendre photos - GPS auto-ajouté"
+        }
+      ]
+    },
+    "etat_lieux_menage": {
+      "id": "etat_lieux_menage",
+      "titre": "État des lieux Ménage",
+      "description": "Détails équipements ménagers sanitaires",
+      "icone": "🟠",
+      "couleur": "#F97316",
+      "champs": [
+        {
+          "id": "date",
+          "type": "date",
+          "label": "Date",
+          "obligatoire": true
+        },
+        {
+          "id": "nb_menages_visites",
+          "type": "nombre",
+          "label": "Nombre ménages visités",
+          "obligatoire": true,
+          "min": 1
+        },
+        {
+          "id": "existence_latrines",
+          "type": "oui_non",
+          "label": "Existence latrines?",
+          "obligatoire": true
+        },
+        {
+          "id": "dispositif_lavage_mains",
+          "type": "checkbox",
+          "label": "Dispositif lavage mains?",
+          "obligatoire": true
+        },
+        {
+          "id": "eau_savon",
+          "type": "oui_non",
+          "label": "Eau + savon?",
+          "obligatoire": false
+        },
+        {
+          "id": "formulaire_a",
+          "type": "formulaire_conditionnel",
+          "titre": "Détails techniques",
+          "condition": "existence_latrines == 'oui'",
+          "champs": [
+            {
+              "id": "type_latrine",
+              "type": "liste",
+              "label": "Type latrine",
+              "obligatoire": true,
+              "options": ["Fosse simple", "Fosse septique", "WC suspendu", "Autre"]
+            },
+            {
+              "id": "fosse_septique",
+              "type": "oui_non",
+              "label": "Fosse septique?",
+              "obligatoire": true
+            },
+            {
+              "id": "enfouissement",
+              "type": "oui_non",
+              "label": "Enfouissement?",
+              "obligatoire": false
+            },
+            {
+              "id": "etat_entretien",
+              "type": "liste",
+              "label": "État d'entretien",
+              "obligatoire": true,
+              "options": ["Bon", "Moyen", "Mauvais"]
+            },
+            {
+              "id": "photos_detail",
+              "type": "photos",
+              "label": "Photos détaillées",
+              "obligatoire": true,
+              "min_photos": 2,
+              "max_photos": 10
+            }
+          ]
+        },
+        {
+          "id": "formulaire_b",
+          "type": "formulaire_conditionnel",
+          "titre": "Problèmes identifiés",
+          "condition": "existence_latrines == 'non'",
+          "champs": [
+            {
+              "id": "raison_absence",
+              "type": "texte_long",
+              "label": "Raison absence latrines",
+              "obligatoire": true,
+              "max_char": 5000
+            },
+            {
+              "id": "risques_sanitaires",
+              "type": "checkboxes",
+              "label": "Risques sanitaires identifiés",
+              "obligatoire": true,
+              "options": [
+                {"id": "cont_eau", "label": "Contamination eau"},
+                {"id": "malnutrition", "label": "Malnutrition enfants"},
+                {"id": "diarrhee", "label": "Diarrhée"},
+                {"id": "autres", "label": "Autres"}
+              ]
+            },
+            {
+              "id": "photos_problemes",
+              "type": "photos",
+              "label": "Photos problèmes",
+              "obligatoire": true,
+              "min_photos": 2,
+              "max_photos": 10
+            },
+            {
+              "id": "recommandations",
+              "type": "texte_long",
+              "label": "Recommandations",
+              "obligatoire": true,
+              "max_char": 5000
+            }
+          ]
+        }
+      ]
+    },
+    "dernier_suivi_localite": {
+      "id": "dernier_suivi_localite",
+      "titre": "Dernier suivi Localité",
+      "description": "Suivi temporel du dernier passage",
+      "icone": "🔵",
+      "couleur": "#3B82F6",
+      "champs": [
+        {
+          "id": "date",
+          "type": "date",
+          "label": "Date dernier suivi",
+          "obligatoire": true
+        },
+        {
+          "id": "gps",
+          "type": "gps",
+          "label": "Position GPS",
+          "obligatoire": true
+        },
+        {
+          "id": "changements",
+          "type": "texte_long",
+          "label": "Changements depuis dernier suivi",
+          "obligatoire": false,
+          "max_char": 5000
+        },
+        {
+          "id": "nb_actions_completees",
+          "type": "nombre",
+          "label": "Nombre actions complétées",
+          "obligatoire": false,
+          "min": 0
+        },
+        {
+          "id": "etat_general",
+          "type": "liste",
+          "label": "État général",
+          "obligatoire": true,
+          "options": ["Amélioré", "Stable", "Dégradé"]
+        }
+      ]
+    },
+    "dernier_suivi_menage": {
+      "id": "dernier_suivi_menage",
+      "titre": "Dernier suivi Ménage",
+      "description": "Situation ménages à visite précédente",
+      "icone": "🟢",
+      "couleur": "#10B981",
+      "champs": [
+        {
+          "id": "date",
+          "type": "date",
+          "label": "Date dernier suivi",
+          "obligatoire": true
+        },
+        {
+          "id": "nb_menages",
+          "type": "nombre",
+          "label": "Nombre ménages",
+          "obligatoire": true,
+          "min": 1
+        },
+        {
+          "id": "latrines_presentes",
+          "type": "oui_non",
+          "label": "Latrines présentes?",
+          "obligatoire": true
+        },
+        {
+          "id": "etat_entretien",
+          "type": "liste",
+          "label": "État d'entretien",
+          "obligatoire": false,
+          "condition": "latrines_presentes == 'oui'",
+          "options": ["Bon", "Moyen", "Mauvais"]
+        },
+        {
+          "id": "acces_eau_potable",
+          "type": "oui_non",
+          "label": "Accès eau potable?",
+          "obligatoire": true
+        },
+        {
+          "id": "dispositif_lavage",
+          "type": "checkbox",
+          "label": "Dispositif lavage mains?",
+          "obligatoire": true
+        }
+      ]
+    },
+    "inventaire": {
+      "id": "inventaire",
+      "titre": "Inventaire",
+      "description": "Inventaire ressources assainissement",
+      "icone": "🟡",
+      "couleur": "#FBBF24",
+      "champs": [
+        {
+          "id": "date",
+          "type": "date",
+          "label": "Date inventaire",
+          "obligatoire": true
+        },
+        {
+          "id": "nb_points_eau",
+          "type": "nombre",
+          "label": "Nombre points d'eau",
+          "obligatoire": true,
+          "min": 0
+        },
+        {
+          "id": "acces_assainissement",
+          "type": "oui_non",
+          "label": "Accès assainissement?",
+          "obligatoire": true
+        },
+        {
+          "id": "nb_latrines_publiques",
+          "type": "nombre",
+          "label": "Nombre latrines publiques",
+          "obligatoire": true,
+          "min": 0
+        },
+        {
+          "id": "etat_infrastructure",
+          "type": "liste",
+          "label": "État général infrastructure",
+          "obligatoire": true,
+          "options": ["Bon", "Moyen", "Mauvais"]
+        },
+        {
+          "id": "formulaire_a",
+          "type": "formulaire_conditionnel",
+          "titre": "Infrastructure présente",
+          "condition": "acces_assainissement == 'oui'",
+          "champs": [
+            {
+              "id": "type_assainissement",
+              "type": "liste",
+              "label": "Type assainissement",
+              "obligatoire": true,
+              "options": ["Réseau collectif", "Fosses septiques", "Puits", "Autre"]
+            },
+            {
+              "id": "nb_points_collecte",
+              "type": "nombre",
+              "label": "Nombre points collecte",
+              "obligatoire": true,
+              "min": 1
+            },
+            {
+              "id": "etat_infrastructure_detail",
+              "type": "liste",
+              "label": "État infrastructure",
+              "obligatoire": true,
+              "options": ["Fonctionnel", "Partiellement", "Hors service"]
+            },
+            {
+              "id": "couts_maintenance",
+              "type": "nombre",
+              "label": "Coûts maintenance estimés (MRU)",
+              "obligatoire": false,
+              "min": 0
+            }
+          ]
+        },
+        {
+          "id": "formulaire_b",
+          "type": "formulaire_conditionnel",
+          "titre": "Infrastructure absente",
+          "condition": "acces_assainissement == 'non'",
+          "champs": [
+            {
+              "id": "raisons_absence",
+              "type": "checkboxes",
+              "label": "Raisons absence",
+              "obligatoire": true,
+              "options": [
+                {"id": "budget", "label": "Manque de budget"},
+                {"id": "technique", "label": "Problèmes techniques"},
+                {"id": "foncier", "label": "Problèmes fonciers"},
+                {"id": "politique", "label": "Problèmes politiques"},
+                {"id": "autres", "label": "Autres"}
+              ]
+            },
+            {
+              "id": "risques_identifies",
+              "type": "texte_long",
+              "label": "Risques identifiés",
+              "obligatoire": true,
+              "max_char": 5000
+            },
+            {
+              "id": "couts_creation",
+              "type": "nombre",
+              "label": "Coûts création estimés (MRU)",
+              "obligatoire": true,
+              "min": 0
+            },
+            {
+              "id": "priorite",
+              "type": "liste",
+              "label": "Priorité action",
+              "obligatoire": true,
+              "options": ["Urgente", "Haute", "Moyenne", "Basse"]
+            }
+          ]
+        }
+      ]
+    },
+    "programmation_travaux": {
+      "id": "programmation_travaux",
+      "titre": "Programmation des travaux",
+      "description": "Planification des travaux à effectuer",
+      "icone": "🟠",
+      "couleur": "#F97316",
+      "status": "⚠️ MODULE RÉUTILISABLE - Doit être isolé",
+      "champs": [
+        {
+          "id": "date_travaux",
+          "type": "date",
+          "label": "Date travaux programmés",
+          "obligatoire": true
+        },
+        {
+          "id": "description",
+          "type": "texte_long",
+          "label": "Description travaux",
+          "obligatoire": true,
+          "max_char": 5000
+        },
+        {
+          "id": "budget_estime",
+          "type": "nombre",
+          "label": "Budget estimé (MRU)",
+          "obligatoire": true,
+          "min": 0
+        },
+        {
+          "id": "equipe_assignee",
+          "type": "dropdown",
+          "label": "Équipe assignée",
+          "obligatoire": true,
+          "source": "equipes"
+        },
+        {
+          "id": "materiaux",
+          "type": "texte_long",
+          "label": "Matériaux requis",
+          "obligatoire": false,
+          "max_char": 5000
+        },
+        {
+          "id": "dates_etapes",
+          "type": "dates_multiples",
+          "label": "Dates étapes",
+          "obligatoire": false,
+          "min_dates": 0,
+          "max_dates": 10
+        }
+      ]
+    },
+    "travaux_receptiones": {
+      "id": "travaux_receptiones",
+      "titre": "Travaux réceptionnés",
+      "description": "Validation travaux complétés",
+      "icone": "🔴",
+      "couleur": "#EF4444",
+      "champs": [
+        {
+          "id": "date_reception",
+          "type": "date",
+          "label": "Date réception",
+          "obligatoire": true
+        },
+        {
+          "id": "nb_travaux_completes",
+          "type": "nombre",
+          "label": "Nombre travaux complétés",
+          "obligatoire": true,
+          "min": 1
+        },
+        {
+          "id": "photos_avant_apres",
+          "type": "photos",
+          "label": "Photos avant/après",
+          "obligatoire": true,
+          "min_photos": 2,
+          "max_photos": 10,
+          "aide": "Min 2: 1 avant, 1 après"
+        },
+        {
+          "id": "qualite_generale",
+          "type": "evaluation",
+          "label": "Qualité générale",
+          "obligatoire": true,
+          "scale": 5
+        },
+        {
+          "id": "rapport_inspection",
+          "type": "texte_long",
+          "label": "Rapport inspection",
+          "obligatoire": true,
+          "max_char": 5000
+        },
+        {
+          "id": "validation_responsable",
+          "type": "signature",
+          "label": "Validation responsable",
+          "obligatoire": true
+        },
+        {
+          "id": "budget_final",
+          "type": "nombre",
+          "label": "Budget final engagé (MRU)",
+          "obligatoire": true,
+          "min": 0
+        },
+        {
+          "id": "acceptation",
+          "type": "oui_non",
+          "label": "Travaux acceptés?",
+          "obligatoire": true
+        }
+      ]
+    }
+  },
+  "types_champs": {
+    "texte_court": {
+      "id": "texte_court",
+      "label": "Texte court",
+      "max_char": 100,
+      "widget": "TextField"
+    },
+    "texte_long": {
+      "id": "texte_long",
+      "label": "Texte long",
+      "max_char": 5000,
+      "widget": "TextFormField (multiline)"
+    },
+    "nombre": {
+      "id": "nombre",
+      "label": "Nombre",
+      "types": ["entier", "décimal"],
+      "widget": "TextFormField (numeric)"
+    },
+    "oui_non": {
+      "id": "oui_non",
+      "label": "Oui/Non",
+      "options": ["Oui", "Non"],
+      "widget": "ToggleButtons"
+    },
+    "date": {
+      "id": "date",
+      "label": "Date",
+      "format": "YYYY-MM-DD",
+      "widget": "DatePicker"
+    },
+    "date_heure": {
+      "id": "date_heure",
+      "label": "Date/Heure",
+      "format": "YYYY-MM-DD HH:MM",
+      "widget": "DateTimePicker"
+    },
+    "gps": {
+      "id": "gps",
+      "label": "GPS",
+      "fields": ["latitude", "longitude", "precision"],
+      "widget": "GpsWidget"
+    },
+    "photos": {
+      "id": "photos",
+      "label": "Photos",
+      "formats": ["JPG", "PNG"],
+      "compressionion": true,
+      "metadata_gps": true,
+      "widget": "ImagePicker"
+    },
+    "dropdown": {
+      "id": "dropdown",
+      "label": "Liste déroulante",
+      "validation": "pas_doublons",
+      "widget": "DropdownButton"
+    },
+    "checkboxes": {
+      "id": "checkboxes",
+      "label": "Listes multiples",
+      "widget": "CheckboxListTile"
+    },
+    "evaluation": {
+      "id": "evaluation",
+      "label": "État/Évaluation",
+      "scale": ["Bon/Moyen/Mauvais", "1-5"],
+      "widget": "RatingBar"
+    },
+    "signature": {
+      "id": "signature",
+      "label": "Signature",
+      "capture": ["dessin", "image"],
+      "widget": "SignaturePad"
+    }
+  },
+  "validation_regles": {
+    "obligatoire": {
+      "regle": "Champ ne peut pas être vide",
+      "niveau": "CRITIQUE"
+    },
+    "gps_valide": {
+      "regle": "Latitude [-90, 90], Longitude [-180, 180]",
+      "niveau": "CRITIQUE"
+    },
+    "date_coherente": {
+      "regle": "Date <= aujourd'hui",
+      "niveau": "CRITIQUE"
+    },
+    "pas_doublon": {
+      "regle": "Même localité + même date = impossible",
+      "niveau": "CRITIQUE"
+    },
+    "dropdown_doublon": {
+      "regle": "Pas de doublons dans dropdown values",
+      "niveau": "CRITIQUE"
+    },
+    "foto_qualite": {
+      "regle": "Photo >= 100KB, format JPG/PNG",
+      "niveau": "MAJEUR"
+    },
+    "format_date": {
+      "regle": "Format YYYY-MM-DD obligatoire",
+      "niveau": "MAJEUR"
+    },
+    "nombre_positif": {
+      "regle": "Nombre >= 0",
+      "niveau": "MAJEUR"
+    }
+  },
+  "navigation": {
+    "debut": "login_screen",
+    "apres_login": "parametrage_screen",
+    "apres_parametrage": "dashboard_screen",
+    "formulaires": {
+      "ordre": [
+        "declenchement",
+        "certification_fdal",
+        "etat_lieux_localite",
+        "etat_lieux_menage",
+        "dernier_suivi_localite",
+        "dernier_suivi_menage",
+        "inventaire",
+        "programmation_travaux",
+        "travaux_receptiones"
+      ]
+    }
+  },
+  "couleurs_codes": {
+    "vert": {
+      "code": "#10B981",
+      "signification": "Complété / Valide / Succès"
+    },
+    "jaune": {
+      "code": "#FBBF24",
+      "signification": "En cours / À vérifier"
+    },
+    "rouge": {
+      "code": "#EF4444",
+      "signification": "Erreur / Blocage / Attention"
+    },
+    "gris": {
+      "code": "#9CA3AF",
+      "signification": "Inactif / Facultatif"
+    },
+    "bleu": {
+      "code": "#3B82F6",
+      "signification": "Info / Lien / Bouton primaire"
+    }
+  },
+  "statuts_formulaire": {
+    "brouillon": {
+      "label": "Brouillon",
+      "couleur": "gris",
+      "actions": ["Reprendre", "Supprimer"]
+    },
+    "complete": {
+      "label": "Complété",
+      "couleur": "jaune",
+      "actions": ["Éditer", "Valider", "Supprimer"]
+    },
+    "validee": {
+      "label": "Validée",
+      "couleur": "vert",
+      "actions": ["Envoyer", "Éditer"]
+    },
+    "envoyee": {
+      "label": "Envoyée",
+      "couleur": "bleu",
+      "actions": ["Voir détails"]
+    },
+    "archivee": {
+      "label": "Archivée",
+      "couleur": "gris",
+      "actions": ["Exporter"]
+    }
+  }
+}

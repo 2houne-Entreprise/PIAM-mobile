@@ -1,0 +1,17 @@
+[
+  {"id":1, "nom":"Adrar"},
+  {"id":2, "nom":"Assaba"},
+  {"id":3, "nom":"Brakna"},
+  {"id":4, "nom":"Dakhlet Nouadhibou"},
+  {"id":5, "nom":"Gorgol"},
+  {"id":6, "nom":"Guidimakha"},
+  {"id":7, "nom":"Hodh Ech Chargui"},
+  {"id":8, "nom":"Hodh El Gharbi"},
+  {"id":9, "nom":"Inchiri"},
+  {"id":10, "nom":"Nouakchott Nord"},
+  {"id":11, "nom":"Nouakchott Ouest"},
+  {"id":12, "nom":"Nouakchott Sud"},
+  {"id":13, "nom":"Tagant"},
+  {"id":14, "nom":"Tiris Zemmour"},
+  {"id":15, "nom":"Trarza"}
+]

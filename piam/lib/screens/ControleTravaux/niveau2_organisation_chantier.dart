@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/sqlite_service.dart';
+import '../../services/database_service.dart';
 
 class Niveau2OrganisationChantier extends StatefulWidget {
   static const String routeName = '/niveau2';
@@ -12,7 +12,7 @@ class Niveau2OrganisationChantier extends StatefulWidget {
 
 class _Niveau2OrganisationChantierState
     extends State<Niveau2OrganisationChantier> {
-  final SQLiteService _dbService = SQLiteService();
+  final DatabaseService _dbService = DatabaseService();
 
   final _personnelForm = GlobalKey<FormState>();
 
@@ -179,34 +179,9 @@ class _Niveau2OrganisationChantierState
     super.dispose();
   }
 
-  Future<int?> _resolveProjectId() async {
-    final currentProjectId = await _dbService.getCurrentProjectId();
-    if (currentProjectId != null) return currentProjectId;
-
-    final latestProjectId = await _dbService.getLatestProjectId();
-    if (latestProjectId != null) {
-      await _dbService.setCurrentProjectId(latestProjectId);
-      return latestProjectId;
-    }
-    return null;
-  }
-
   Future<void> _savePersonnel() async {
     if (!_personnelForm.currentState!.validate()) return;
-
-    final projectId = await _resolveProjectId();
-    if (projectId == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Aucun projet actif. Complétez d\'abord le Niveau 1.'),
-        ),
-      );
-      return;
-    }
-
-    await _dbService.insert('personnel', {
-      'projectId': projectId,
+    final data = {
       'nom': _nomPersonnelController.text.trim(),
       'fonction': _fonctionPersonnel,
       'dateArrivee': _dateArriveeController.text.trim(),
@@ -220,8 +195,12 @@ class _Niveau2OrganisationChantierState
       'gilet': _gilet ? 'Oui' : 'Non',
       'remarque': _remarquePersonnelController.text.trim(),
       'createdAt': DateTime.now().toIso8601String(),
+    };
+    await _dbService.insertQuestionnaire({
+      'type': 'organisation_chantier_personnel',
+      'data_json': data.toString(),
+      'date': DateTime.now().toIso8601String(),
     });
-
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
@@ -229,26 +208,21 @@ class _Niveau2OrganisationChantierState
   }
 
   Future<void> _saveEquipementsChecklist() async {
-    final projectId = await _resolveProjectId();
-    if (projectId == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Aucun projet actif. Complétez d\'abord le Niveau 1.'),
-        ),
-      );
-      return;
-    }
-
-    for (final item in _equipementChecklist) {
-      await _dbService.insert('equipement', {
-        'projectId': projectId,
-        'nom': item['nom'],
-        'etat': item['etat'],
-        'remarque': item['remarque'],
-        'createdAt': item['date'].toString(),
-      });
-    }
+    final data = _equipementChecklist
+        .map(
+          (item) => {
+            'nom': item['nom'],
+            'etat': item['etat'],
+            'remarque': item['remarque'],
+            'date': item['date'],
+          },
+        )
+        .toList();
+    await _dbService.insertQuestionnaire({
+      'type': 'organisation_chantier_equipements',
+      'data_json': data.toString(),
+      'date': DateTime.now().toIso8601String(),
+    });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Checklist équipements sauvegardée')),
@@ -256,27 +230,22 @@ class _Niveau2OrganisationChantierState
   }
 
   Future<void> _saveMateriauxChecklist() async {
-    final projectId = await _resolveProjectId();
-    if (projectId == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Aucun projet actif. Complétez d\'abord le Niveau 1.'),
-        ),
-      );
-      return;
-    }
-
-    for (final item in _materiauxChecklist) {
-      await _dbService.insert('materiaux', {
-        'projectId': projectId,
-        'nom': item['nom'],
-        'quantite': int.tryParse(item['quantite']?.toString() ?? '') ?? 0,
-        'qualite': item['qualite'],
-        'recommandation': item['recommandation'],
-        'createdAt': item['date'].toString(),
-      });
-    }
+    final data = _materiauxChecklist
+        .map(
+          (item) => {
+            'nom': item['nom'],
+            'quantite': int.tryParse(item['quantite']?.toString() ?? '') ?? 0,
+            'qualite': item['qualite'],
+            'recommandation': item['recommandation'],
+            'date': item['date'],
+          },
+        )
+        .toList();
+    await _dbService.insertQuestionnaire({
+      'type': 'organisation_chantier_materiaux',
+      'data_json': data.toString(),
+      'date': DateTime.now().toIso8601String(),
+    });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Checklist matériaux sauvegardée')),
