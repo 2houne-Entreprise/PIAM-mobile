@@ -5,7 +5,6 @@ import 'package:piam/presentation/pages/formulaires/dernier_suivi_localite_page.
 import 'package:piam/presentation/pages/formulaires/dernier_suivi_menage_page.dart';
 import 'package:piam/presentation/pages/formulaires/inventaire_page.dart';
 
-import 'package:piam/presentation/pages/formulaires/travaux_receptionnes_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
@@ -17,7 +16,7 @@ import 'package:piam/presentation/bloc/auth/auth_event.dart';
 import 'package:piam/presentation/bloc/auth/auth_state.dart';
 import 'package:piam/presentation/bloc/formulaire/formulaire_bloc.dart';
 import 'package:piam/presentation/pages/auth/login_page.dart';
-import 'package:piam/presentation/pages/dashboard/dashboard_page.dart';
+
 import 'package:piam/presentation/pages/formulaires/calendrier_page.dart';
 import 'package:piam/presentation/pages/formulaires/cloture_page.dart';
 import 'package:piam/presentation/pages/formulaires/conformite_page.dart';
@@ -108,13 +107,11 @@ class MyApp extends StatelessWidget {
             case '/formulaires/programmation_travaux':
               builder = (context) => const ParametrageScreen();
               break;
-            case '/formulaires/travaux_receptionnes':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => TravauxReceptionnesPage(formulaireId: id);
-              break;
+
             case '/dashboard':
               // Normally handled by HomePage
-              builder = (context) => Scaffold(body: Center(child: Text('Dashboard')));
+              builder = (context) =>
+                  Scaffold(body: Center(child: Text('Dashboard')));
               break;
             case '/formulaires/declenchement':
               final id = settings.arguments as String? ?? 'new';
@@ -153,7 +150,8 @@ class MyApp extends StatelessWidget {
               builder = (context) => ConformitePage(formulaireId: id);
               break;
             default:
-              builder = (context) => Scaffold(body: Center(child: Text('Route introuvable')));
+              builder = (context) =>
+                  Scaffold(body: Center(child: Text('Route introuvable')));
           }
 
           return MaterialPageRoute<dynamic>(

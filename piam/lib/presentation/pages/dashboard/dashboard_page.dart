@@ -35,7 +35,7 @@ class _DashboardPageState extends State<DashboardPage> {
     'Dernier Suivi Ménage': 'brouillon',
     'Programmation des Travaux': 'brouillon',
     'Inventaire': 'brouillon',
-    'Travaux Réceptionnés': 'brouillon',
+    // 'Travaux Réceptionnés': 'brouillon',
   };
 
   Map<String, int> stats = {'complète': 0, 'validée': 0, 'brouillon': 0};
@@ -78,16 +78,24 @@ class _DashboardPageState extends State<DashboardPage> {
         String resolvedName = 'Localité non définie';
 
         if (locId != null) {
-          final foundLoc = ReferenceData.localites.where((l) => l['id'] == locId).toList();
+          final foundLoc = ReferenceData.localites
+              .where((l) => l['id'] == locId)
+              .toList();
           if (foundLoc.isNotEmpty) {
-            resolvedName = (foundLoc.first['intitule_fr'] ?? foundLoc.first['intitule']).toString();
+            resolvedName =
+                (foundLoc.first['intitule_fr'] ?? foundLoc.first['intitule'])
+                    .toString();
           } else {
             resolvedName = 'Localité ($locId)';
           }
         } else if (communeId != null) {
-          final foundCom = ReferenceData.communes.where((c) => c['id'] == communeId).toList();
+          final foundCom = ReferenceData.communes
+              .where((c) => c['id'] == communeId)
+              .toList();
           if (foundCom.isNotEmpty) {
-            resolvedName = (foundCom.first['intitule_fr'] ?? foundCom.first['intitule']).toString();
+            resolvedName =
+                (foundCom.first['intitule_fr'] ?? foundCom.first['intitule'])
+                    .toString();
           } else {
             resolvedName = 'Commune ($communeId)';
           }
@@ -154,7 +162,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 mainAxisSpacing: 16,
                 crossAxisSpacing: 16,
               ),
-              itemCount: 10,
+              itemCount: 8,
               itemBuilder: (context, index) {
                 final formulaireNames = [
                   'Déclenchement',
@@ -165,7 +173,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   'Dernier Suivi Ménage',
                   'Programmation des Travaux',
                   'Inventaire',
-                  'Travaux Réceptionnés',
                 ];
                 final name = formulaireNames[index];
                 final status = formulaireStatuts[name] ?? 'brouillon';
@@ -483,11 +490,8 @@ class _DashboardPageState extends State<DashboardPage> {
           context,
         ).pushNamed('/formulaires/inventaire', arguments: 'new');
         break;
-      case 'Travaux Réceptionnés':
-        Navigator.of(
-          context,
-        ).pushNamed('/formulaires/travaux_receptionnes', arguments: 'new');
-        break;
+      // case 'Travaux Réceptionnés':
+      //   break;
     }
   }
 

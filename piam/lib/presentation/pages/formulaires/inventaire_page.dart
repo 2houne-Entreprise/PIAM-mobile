@@ -13,51 +13,46 @@ class _InventairePageState extends State<InventairePage> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
-  DateTime? _dateActivite;
-  // ignore: unused_field
-  int? _nbEquipements;
-  bool _lavageMains = false;
-  bool? _accesAssainissement;
-  // ignore: unused_field
-  String? _autre;
-  final _autreController = TextEditingController();
+  // Informations
+  String? _nomInfrastructure;
+  String? _typeInfrastructure;
 
-  bool _showAccesOui = false;
-  bool _showAccesNon = false;
+  // Eau
+  bool? _accesEau;
+  String? _sourceEau;
+  double? _distanceSource;
 
-  @override
-  void dispose() {
-    _autreController.dispose();
-    super.dispose();
-  }
+  // Assainissement
+  bool? _accesLatrines;
+  int? _nbBlocs;
+  int? _nbCabines;
+  int? _nbCabinesFonctionnelles;
+  String? _photoPath;
+  bool? _besoinConstruction;
+  int? _nbBlocsConstruire;
+  int? _nbCabinesConstruire;
 
-  void _onAccesChanged(bool? value) {
+  // DLM
+  bool? _presenceDLM;
+  bool? _dlmEauSavon;
+  bool? _dlmFonctionnel;
+
+  // Photo (à adapter selon votre logique de prise de photo)
+  Future<void> _pickPhoto() async {
     setState(() {
-      _accesAssainissement = value;
-      _showAccesOui = value == true;
-      _showAccesNon = value == false;
+      _photoPath = 'photo_path.jpg'; // Placeholder
     });
-  }
-
-  Future<void> _pickDate() async {
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _dateActivite ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-    if (d != null) setState(() => _dateActivite = d);
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1));
+    await Future.delayed(const Duration(milliseconds: 600));
     if (mounted) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Questionnaire envoyé'),
+          content: Text('Inventaire envoyé'),
           backgroundColor: Colors.green,
         ),
       );
@@ -76,90 +71,201 @@ class _InventairePageState extends State<InventairePage> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  const Text('Liste complète des équipements.'),
-                  const SizedBox(height: 16),
-                  InkWell(
-                    onTap: _pickDate,
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Date de l’activité',
-                        prefixIcon: Icon(Icons.calendar_today),
-                      ),
-                      child: Text(
-                        _dateActivite != null
-                            ? '${_dateActivite!.day.toString().padLeft(2, '0')}/'
-                                  '${_dateActivite!.month.toString().padLeft(2, '0')}/'
-                                  '${_dateActivite!.year}'
-                            : 'Sélectionner une date',
-                        style: TextStyle(
-                          color: _dateActivite != null
-                              ? Colors.black87
-                              : Colors.grey,
-                        ),
-                      ),
-                    ),
+                  const Text(
+                    'Informations',
+                    style: TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   TextFormField(
                     decoration: const InputDecoration(
-                      labelText: 'NB d’équipements',
+                      labelText: 'Nom de l’infrastructure',
+                      border: OutlineInputBorder(),
                     ),
-                    keyboardType: TextInputType.number,
-                    validator: (v) =>
-                        v == null || v.isEmpty ? 'Champ requis' : null,
-                    onSaved: (v) => _nbEquipements = int.tryParse(v ?? ''),
+                    onChanged: (v) => _nomInfrastructure = v,
                   ),
-                  const SizedBox(height: 12),
-                  CheckboxListTile(
-                    title: const Text('Dispositif de lavage de mains'),
-                    value: _lavageMains,
-                    onChanged: (v) => setState(() => _lavageMains = v ?? false),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    decoration: const InputDecoration(
+                      labelText: 'Type d’infrastructure',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (v) => _typeInfrastructure = v,
                   ),
-                  const SizedBox(height: 12),
-                  const Text('Accès à l’assainissement ?'),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Eau',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
                         child: RadioListTile<bool>(
-                          title: const Text('Oui'),
+                          title: const Text('Accès à l’eau : Oui'),
                           value: true,
-                          groupValue: _accesAssainissement,
-                          onChanged: _onAccesChanged,
+                          groupValue: _accesEau,
+                          onChanged: (v) => setState(() => _accesEau = v),
                         ),
                       ),
                       Expanded(
                         child: RadioListTile<bool>(
                           title: const Text('Non'),
                           value: false,
-                          groupValue: _accesAssainissement,
-                          onChanged: _onAccesChanged,
+                          groupValue: _accesEau,
+                          onChanged: (v) => setState(() => _accesEau = v),
                         ),
                       ),
                     ],
                   ),
-                  if (_showAccesOui)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        'Formulaire spécifique pour accès OUI (à compléter selon besoins)',
-                      ),
-                    ),
-                  if (_showAccesNon)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        'Formulaire spécifique pour accès NON (à compléter selon besoins)',
-                      ),
-                    ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   TextFormField(
-                    controller: _autreController,
                     decoration: const InputDecoration(
-                      labelText: 'Autre (texte libre)',
+                      labelText: 'Source d’eau',
+                      border: OutlineInputBorder(),
                     ),
-                    maxLines: 2,
+                    onChanged: (v) => _sourceEau = v,
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    decoration: const InputDecoration(
+                      labelText: 'Distance à la source (m)',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (v) => _distanceSource = double.tryParse(
+                      v.replaceAll(',', '.'),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Assainissement',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: RadioListTile<bool>(
+                          title: const Text('Accès à des latrines : Oui'),
+                          value: true,
+                          groupValue: _accesLatrines,
+                          onChanged: (v) => setState(() => _accesLatrines = v),
+                        ),
+                      ),
+                      Expanded(
+                        child: RadioListTile<bool>(
+                          title: const Text('Non'),
+                          value: false,
+                          groupValue: _accesLatrines,
+                          onChanged: (v) => setState(() => _accesLatrines = v),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_accesLatrines == true) ...[
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      decoration: const InputDecoration(
+                        labelText: 'Nombre de blocs',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (v) => _nbBlocs = int.tryParse(v),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      decoration: const InputDecoration(
+                        labelText: 'Nombre de cabines',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (v) => _nbCabines = int.tryParse(v),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      decoration: const InputDecoration(
+                        labelText: 'Nombre de cabines fonctionnelles',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (v) =>
+                          _nbCabinesFonctionnelles = int.tryParse(v),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.camera_alt),
+                            label: const Text('Prendre une photo'),
+                            onPressed: _pickPhoto,
+                          ),
+                        ),
+                        if (_photoPath != null)
+                          const Padding(
+                            padding: EdgeInsets.only(left: 8),
+                            child: Icon(
+                              Icons.check_circle,
+                              color: Colors.green,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                  if (_accesLatrines == false) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: CheckboxListTile(
+                            title: const Text('Besoin de construction'),
+                            value: _besoinConstruction ?? false,
+                            onChanged: (v) =>
+                                setState(() => _besoinConstruction = v),
+                          ),
+                        ),
+                      ],
+                    ),
+                    TextFormField(
+                      decoration: const InputDecoration(
+                        labelText: 'Nombre de blocs à construire',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (v) => _nbBlocsConstruire = int.tryParse(v),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      decoration: const InputDecoration(
+                        labelText: 'Nombre de cabines à construire',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (v) => _nbCabinesConstruire = int.tryParse(v),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  const Text(
+                    'DLM',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  CheckboxListTile(
+                    title: const Text('Présence DLM'),
+                    value: _presenceDLM ?? false,
+                    onChanged: (v) => setState(() => _presenceDLM = v),
+                  ),
+                  CheckboxListTile(
+                    title: const Text('DLM avec eau + savon'),
+                    value: _dlmEauSavon ?? false,
+                    onChanged: (v) => setState(() => _dlmEauSavon = v),
+                  ),
+                  CheckboxListTile(
+                    title: const Text('DLM fonctionnel'),
+                    value: _dlmFonctionnel ?? false,
+                    onChanged: (v) => setState(() => _dlmFonctionnel = v),
+                  ),
+                  const SizedBox(height: 32),
                   ElevatedButton.icon(
                     icon: const Icon(Icons.send),
                     label: const Text('Envoyer'),

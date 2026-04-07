@@ -18,18 +18,41 @@ class _DernierSuiviLocalitePageState extends State<DernierSuiviLocalitePage> {
 
   int? _localiteId;
   dynamic _userId;
-
   DateTime? _dateActivite;
-  int? _nbHabitants;
-  int? _nbLatrines;
 
-  final _ameliorationsController = TextEditingController();
-  final _degradationsController = TextEditingController();
+  // Données générales
+  int? _nbMenagesEnquetes;
+  int? _nbTotalLatrines;
+  int? _nbLatrinesAmeliorees;
+  int? _nbLatrinesNonAmeliorees;
+
+  // Gestion
+  int? _nbLatrinesAmelioreesHygienique;
+  int? _nbLatrinesAmelioreesPartagees;
+  int? _nbLatrinesNonFonctionnelles;
+
+  // État
+  int? _nbLatrinesEndommagees;
+  int? _nbMenagesUtilisantVoisin;
+  int? _nbMenagesDAL;
+
+  // Réalisations
+  int? _nbNouvellesLatrinesConstruites;
+  int? _nbLatrinesAutofinancees;
+  int? _nbLatrinesAideExterieure;
+  int? _nbLatrinesFinanceesCommunaute;
+
+  // Investissement
+  double? _montantInvestiMenages;
+
+  // DLM
+  int? _nbLatrinesDLM;
+  int? _nbDlmEauSavon;
+  int? _nbDlmEauSansSavon;
+  int? _nbMenagesSansDLM;
 
   @override
   void dispose() {
-    _ameliorationsController.dispose();
-    _degradationsController.dispose();
     super.dispose();
   }
 
@@ -46,27 +69,38 @@ class _DernierSuiviLocalitePageState extends State<DernierSuiviLocalitePage> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
-    
     try {
       final db = DatabaseService();
-      
       final data = {
         'type': 'dernier_suivi_localite',
         'data_json': {
           'dateActivite': _dateActivite?.toIso8601String(),
-          'nbHabitants': _nbHabitants,
-          'nbLatrines': _nbLatrines,
-          'ameliorations': _ameliorationsController.text,
-          'degradations': _degradationsController.text,
+          'nbMenagesEnquetes': _nbMenagesEnquetes,
+          'nbTotalLatrines': _nbTotalLatrines,
+          'nbLatrinesAmeliorees': _nbLatrinesAmeliorees,
+          'nbLatrinesNonAmeliorees': _nbLatrinesNonAmeliorees,
+          'nbLatrinesAmelioreesHygienique': _nbLatrinesAmelioreesHygienique,
+          'nbLatrinesAmelioreesPartagees': _nbLatrinesAmelioreesPartagees,
+          'nbLatrinesNonFonctionnelles': _nbLatrinesNonFonctionnelles,
+          'nbLatrinesEndommagees': _nbLatrinesEndommagees,
+          'nbMenagesUtilisantVoisin': _nbMenagesUtilisantVoisin,
+          'nbMenagesDAL': _nbMenagesDAL,
+          'nbNouvellesLatrinesConstruites': _nbNouvellesLatrinesConstruites,
+          'nbLatrinesAutofinancees': _nbLatrinesAutofinancees,
+          'nbLatrinesAideExterieure': _nbLatrinesAideExterieure,
+          'nbLatrinesFinanceesCommunaute': _nbLatrinesFinanceesCommunaute,
+          'montantInvestiMenages': _montantInvestiMenages,
+          'nbLatrinesDLM': _nbLatrinesDLM,
+          'nbDlmEauSavon': _nbDlmEauSavon,
+          'nbDlmEauSansSavon': _nbDlmEauSansSavon,
+          'nbMenagesSansDLM': _nbMenagesSansDLM,
         }.toString(),
         'date': DateTime.now().toIso8601String(),
         'user_id': _userId,
         'localite_id': _localiteId,
       };
-      
       await db.insertQuestionnaire(data);
       await Future.delayed(const Duration(milliseconds: 600));
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -111,11 +145,8 @@ class _DernierSuiviLocalitePageState extends State<DernierSuiviLocalitePage> {
                       });
                     },
                   ),
-                  const Text(
-                    'Point de situation actuel et comparaison avec l\'état initial.',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                  ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
+                  // Date
                   InkWell(
                     onTap: _pickDate,
                     child: InputDecorator(
@@ -138,47 +169,123 @@ class _DernierSuiviLocalitePageState extends State<DernierSuiviLocalitePage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'NB d’habitants',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    validator: (v) =>
-                        v == null || v.isEmpty ? 'Champ requis' : null,
-                    onSaved: (v) => _nbHabitants = int.tryParse(v ?? ''),
-                    onChanged: (v) => _nbHabitants = int.tryParse(v),
+                  const SizedBox(height: 24),
+                  // Données générales
+                  const Text(
+                    'Données générales',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildNumberField(
+                    'Nombre de ménages enquêtés',
+                    (v) => _nbMenagesEnquetes = v,
+                  ),
+                  _buildNumberField(
+                    'Nombre total de latrines',
+                    (v) => _nbTotalLatrines = v,
+                  ),
+                  _buildNumberField(
+                    'Nombre de latrines améliorées',
+                    (v) => _nbLatrinesAmeliorees = v,
+                  ),
+                  _buildNumberField(
+                    'Nombre de latrines non améliorées',
+                    (v) => _nbLatrinesNonAmeliorees = v,
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'NB de latrines',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    validator: (v) =>
-                        v == null || v.isEmpty ? 'Champ requis' : null,
-                    onSaved: (v) => _nbLatrines = int.tryParse(v ?? ''),
-                    onChanged: (v) => _nbLatrines = int.tryParse(v),
+                  // Gestion
+                  const Text(
+                    'Gestion',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildNumberField(
+                    'Nombre de latrines améliorées de manière hygiénique',
+                    (v) => _nbLatrinesAmelioreesHygienique = v,
+                  ),
+                  _buildNumberField(
+                    'Nombre de latrines améliorées de manière équitable et partagée',
+                    (v) => _nbLatrinesAmelioreesPartagees = v,
+                  ),
+                  _buildNumberField(
+                    'Nombre de latrines non fonctionnelles',
+                    (v) => _nbLatrinesNonFonctionnelles = v,
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _ameliorationsController,
-                    decoration: const InputDecoration(
-                      labelText: 'Améliorations constatées',
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 3,
+                  // État
+                  const Text(
+                    'État',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildNumberField(
+                    'Nombre de latrines endommagées (hivernage)',
+                    (v) => _nbLatrinesEndommagees = v,
+                  ),
+                  _buildNumberField(
+                    'Nombre de ménages utilisant latrines voisin',
+                    (v) => _nbMenagesUtilisantVoisin = v,
+                  ),
+                  _buildNumberField(
+                    'Nombre de ménages pratiquant la défécation à l’air libre',
+                    (v) => _nbMenagesDAL = v,
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _degradationsController,
-                    decoration: const InputDecoration(
-                      labelText: 'Dégradations constatées',
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 3,
+                  // Réalisations
+                  const Text(
+                    'Réalisations',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildNumberField(
+                    'Nombre de nouvelles latrines construites',
+                    (v) => _nbNouvellesLatrinesConstruites = v,
+                  ),
+                  _buildNumberField(
+                    'Nombre de latrines autofinancées',
+                    (v) => _nbLatrinesAutofinancees = v,
+                  ),
+                  _buildNumberField(
+                    'Nombre de latrines avec aide extérieure',
+                    (v) => _nbLatrinesAideExterieure = v,
+                  ),
+                  _buildNumberField(
+                    'Nombre de latrines financées par la communauté',
+                    (v) => _nbLatrinesFinanceesCommunaute = v,
+                  ),
+                  const SizedBox(height: 16),
+                  // Investissement
+                  const Text(
+                    'Investissement',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildDecimalField(
+                    'Montant investi par les ménages',
+                    (v) => _montantInvestiMenages = v,
+                  ),
+                  const SizedBox(height: 16),
+                  // DLM
+                  const Text(
+                    'DLM',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildNumberField(
+                    'Nombre de latrines avec DLM',
+                    (v) => _nbLatrinesDLM = v,
+                  ),
+                  _buildNumberField(
+                    'Nombre avec eau + savon',
+                    (v) => _nbDlmEauSavon = v,
+                  ),
+                  _buildNumberField(
+                    'Nombre avec eau sans savon',
+                    (v) => _nbDlmEauSansSavon = v,
+                  ),
+                  _buildNumberField(
+                    'Nombre de ménages sans DLM A FAIRE',
+                    (v) => _nbMenagesSansDLM = v,
                   ),
                   const SizedBox(height: 32),
                   SizedBox(
@@ -188,13 +295,45 @@ class _DernierSuiviLocalitePageState extends State<DernierSuiviLocalitePage> {
                       icon: const Icon(Icons.send),
                       label: const Text('Envoyer'),
                       onPressed: _submit,
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 20),
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildNumberField(String label, ValueChanged<int?> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextFormField(
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+        keyboardType: TextInputType.number,
+        validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
+        onChanged: (v) => onChanged(int.tryParse(v)),
+      ),
+    );
+  }
+
+  Widget _buildDecimalField(String label, ValueChanged<double?> onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextFormField(
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
+        onChanged: (v) => onChanged(double.tryParse(v.replaceAll(',', '.'))),
+      ),
     );
   }
 }
