@@ -1,29 +1,38 @@
 import 'package:flutter/material.dart';
-import 'package:piam/config/app_strings.dart';
 import 'package:piam/config/app_theme.dart';
+import 'package:piam/presentation/widgets/app_form_fields.dart';
+import 'package:piam/presentation/widgets/form_header_widget.dart';
+import 'package:piam/services/database_service.dart';
 
-/// Formulaire 3 – Organisation du chantier
+/// Formulaire — Organisation du chantier
+/// 
+/// Gère l'encadrement, les effectifs, les EPI et l'approvisionnement en matériaux.
 class OrganisationPage extends StatefulWidget {
   final String formulaireId;
 
-  const OrganisationPage({Key? key, required this.formulaireId})
-    : super(key: key);
+  const OrganisationPage({Key? key, required this.formulaireId}) : super(key: key);
 
   @override
   State<OrganisationPage> createState() => _OrganisationPageState();
 }
 
 class _OrganisationPageState extends State<OrganisationPage> {
+  // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _isSaved = false;
 
+  int? _localiteId;
+  dynamic _userId;
+
+  // Controllers
   final _chefChantierController = TextEditingController();
   final _nomEntrepriseController = TextEditingController();
   final _effectifOuvrierController = TextEditingController();
   final _effectifEncadrementController = TextEditingController();
   final _observationsController = TextEditingController();
 
-  // Équipements de protection
+  // EPI
   bool _casques = false;
   bool _gants = false;
   bool _chaussures = false;
@@ -35,30 +44,12 @@ class _OrganisationPageState extends State<OrganisationPage> {
   static const List<String> _origines = ['Locale', 'Régionale', 'Nationale'];
 
   // Matériaux
-  final _materiaux = <Map<String, TextEditingController>>[];
+  final List<_MateriauItem> _materiaux = [];
 
   @override
   void initState() {
     super.initState();
-    // Ajouter une ligne de matériau par défaut
-    _addMateriau();
-  }
-
-  void _addMateriau() {
-    setState(() {
-      _materiaux.add({
-        'nom': TextEditingController(),
-        'quantite': TextEditingController(),
-        'qualite': TextEditingController(),
-      });
-    });
-  }
-
-  void _removeMateriau(int index) {
-    setState(() {
-      _materiaux[index].forEach((_, c) => c.dispose());
-      _materiaux.removeAt(index);
-    });
+    // Le premier matériau sera ajouté par le chargement ou par défaut
   }
 
   @override
@@ -68,312 +59,321 @@ class _OrganisationPageState extends State<OrganisationPage> {
     _effectifOuvrierController.dispose();
     _effectifEncadrementController.dispose();
     _observationsController.dispose();
-    for (final m in _materiaux) {
-      m.forEach((_, c) => c.dispose());
-    }
+    for (var m in _materiaux) m.dispose();
     super.dispose();
   }
 
-  Future<void> _saveFormulaire() async {
+  // ── Chargement ────────────────────────────────────────────────────────────
+
+  void _onLocalisationLoaded(int? localiteId, dynamic userId) {
+    setState(() {
+      _localiteId = localiteId;
+      _userId = userId;
+    });
+    if (localiteId != null) _loadSavedData(localiteId);
+  }
+
+  Future<void> _loadSavedData(int localiteId) async {
+    final data = await DatabaseService().getQuestionnaire(
+      type: 'organisation_chantier',
+      localiteId: localiteId,
+    );
+    if (data == null || !mounted) {
+      if (_materiaux.isEmpty) setState(() => _materiaux.add(_MateriauItem()));
+      return;
+    }
+
+    setState(() {
+      _chefChantierController.text = data['chefChantier'] ?? '';
+      _nomEntrepriseController.text = data['nomEntreprise'] ?? '';
+      _effectifOuvrierController.text = data['effectifOuvrier']?.toString() ?? '';
+      _effectifEncadrementController.text = data['effectifEncadrement']?.toString() ?? '';
+      _observationsController.text = data['observations'] ?? '';
+      _origineMainOeuvre = data['origineMainOeuvre'] ?? 'Locale';
+      
+      _casques = data['casques'] ?? false;
+      _gants = data['gants'] ?? false;
+      _chaussures = data['chaussures'] ?? false;
+      _gilets = data['gilets'] ?? false;
+      _masques = data['masques'] ?? false;
+
+      _materiaux.clear();
+      if (data['materiaux'] != null) {
+        for (var item in (data['materiaux'] as List)) {
+          final m = _MateriauItem();
+          m.nomController.text = item['nom'] ?? '';
+          m.quantiteController.text = item['quantite'] ?? '';
+          m.qualiteController.text = item['qualite'] ?? '';
+          _materiaux.add(m);
+        }
+      }
+      if (_materiaux.isEmpty) _materiaux.add(_MateriauItem());
+
+      _isSaved = true;
+    });
+  }
+
+  // ── Sauvegarde ────────────────────────────────────────────────────────────
+
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Organisation enregistrée'),
-          backgroundColor: Colors.green,
-        ),
+
+    try {
+      final materiauxJson = _materiaux.map((m) => {
+        'nom': m.nomController.text,
+        'quantite': m.quantiteController.text,
+        'qualite': m.qualiteController.text,
+      }).toList();
+
+      final dataMap = {
+        'chefChantier': _chefChantierController.text,
+        'nomEntreprise': _nomEntrepriseController.text,
+        'effectifOuvrier': int.tryParse(_effectifOuvrierController.text),
+        'effectifEncadrement': int.tryParse(_effectifEncadrementController.text),
+        'origineMainOeuvre': _origineMainOeuvre,
+        'casques': _casques,
+        'gants': _gants,
+        'chaussures': _chaussures,
+        'gilets': _gilets,
+        'masques': _masques,
+        'materiaux': materiauxJson,
+        'observations': _observationsController.text,
+      };
+
+      await DatabaseService().upsertQuestionnaire(
+        type: 'organisation_chantier',
+        localiteId: _localiteId,
+        dataMap: dataMap,
+        userId: _userId,
       );
+
+      if (mounted) {
+        setState(() => _isSaved = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Organisation enregistrée'),
+            backgroundColor: AppTheme.successColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur : $e'), backgroundColor: AppTheme.errorColor),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _submitFormulaire() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Organisation soumise pour validation'),
-          backgroundColor: Colors.blue,
-        ),
-      );
-    }
-  }
+  // ── Interface ─────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         title: const Text('Organisation du chantier'),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
+        actions: [
+          if (_isSaved)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: AppStatusBadge(
+                label: 'Enregistré',
+                color: AppTheme.successColor,
+                icon: Icons.check_circle_outline,
+              ),
+            ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            FormHeaderWidget(onDataLoaded: _onLocalisationLoaded),
+
+            // ── Section Encadrement ───────────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Encadrement du chantier', icon: Icons.engineering_rounded),
+                AppTextField(
+                  label: 'Nom du Chef de chantier',
+                  controller: _chefChantierController,
+                  required: true,
+                  prefixIcon: Icons.person_outline,
+                ),
+                AppTextField(
+                  label: 'Nom de l\'entreprise titulaire',
+                  controller: _nomEntrepriseController,
+                  required: true,
+                  prefixIcon: Icons.business_outlined,
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppTextField(
+                        label: 'Ouvriers',
+                        controller: _effectifOuvrierController,
+                        keyboardType: TextInputType.number,
+                        prefixIcon: Icons.group_outlined,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: AppTextField(
+                        label: 'Encadrants',
+                        controller: _effectifEncadrementController,
+                        keyboardType: TextInputType.number,
+                        prefixIcon: Icons.supervisor_account_outlined,
+                      ),
+                    ),
+                  ],
+                ),
+                AppDropdownField<String>(
+                  label: 'Origine de la main d\'œuvre',
+                  value: _origineMainOeuvre,
+                  items: _origines.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
+                  onChanged: (v) => setState(() => _origineMainOeuvre = v!),
+                ),
+              ],
+            ),
+
+            // ── Section EPI ───────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Équipements de protection (EPI)', icon: Icons.security_rounded),
+                const Text('Cochez les EPI disponibles sur site :', style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 4,
+                  children: [
+                    _epiToggle('Casques', _casques, (v) => setState(() => _casques = v)),
+                    _epiToggle('Gants', _gants, (v) => setState(() => _gants = v)),
+                    _epiToggle('Chaussures de sécu.', _chaussures, (v) => setState(() => _chaussures = v)),
+                    _epiToggle('Gilets réfléchissants', _gilets, (v) => setState(() => _gilets = v)),
+                    _epiToggle('Masques', _masques, (v) => setState(() => _masques = v)),
+                  ],
+                ),
+              ],
+            ),
+
+            // ── Section Matériaux ─────────────────────────────────────────
+            const AppSectionTitle(title: 'Matériaux et approvisionnement', icon: Icons.inventory_2_outlined),
+            ..._materiaux.asMap().entries.map((e) => _buildMateriauCard(e.key, e.value)),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.add_shopping_cart_outlined),
+                label: const Text('Ajouter un matériau'),
+                onPressed: () => setState(() => _materiaux.add(_MateriauItem())),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+
+            // ── Observations ──────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Observations générales', icon: Icons.comment_outlined),
+                AppTextField(
+                  label: 'Remarques sur l\'organisation',
+                  controller: _observationsController,
+                  maxLines: 4,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+            AppSubmitButton(
+              label: 'Enregistrer l\'organisation',
+              isLoading: _isLoading,
+              onPressed: _save,
+            ),
+            const SizedBox(height: 32),
+          ],
         ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
+    );
+  }
+
+  Widget _buildMateriauCard(int index, _MateriauItem item) {
+    return AppFormCard(
+      padding: const EdgeInsets.all(12),
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
                 children: [
-                  _buildInfoBanner(
-                    'Renseignez l\'organisation du chantier et les ressources humaines',
+                  AppTextField(
+                    label: 'Nom du matériau',
+                    controller: item.nomController,
+                    required: true,
                   ),
-                  const SizedBox(height: 20),
-
-                  // ── Section A : Encadrement ───────────────────────────────
-                  _buildSectionTitle('A. Encadrement du chantier'),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _chefChantierController,
-                    decoration: const InputDecoration(
-                      labelText: 'Chef de chantier',
-                      prefixIcon: Icon(Icons.engineering),
-                    ),
-                    validator: (v) => (v == null || v.isEmpty)
-                        ? AppStrings.requiredField
-                        : null,
-                  ),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _nomEntrepriseController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nom de l\'entreprise',
-                      prefixIcon: Icon(Icons.business),
-                    ),
-                    validator: (v) => (v == null || v.isEmpty)
-                        ? AppStrings.requiredField
-                        : null,
-                  ),
-                  const SizedBox(height: 12),
-
                   Row(
                     children: [
                       Expanded(
-                        child: TextFormField(
-                          controller: _effectifOuvrierController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Effectif ouvriers',
-                            prefixIcon: Icon(Icons.construction),
-                          ),
+                        child: AppTextField(
+                          label: 'Quantité',
+                          controller: item.quantiteController,
+                          hint: 'Ex: 50 sacs',
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
                       Expanded(
-                        child: TextFormField(
-                          controller: _effectifEncadrementController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Encadrement',
-                            prefixIcon: Icon(Icons.supervisor_account),
-                          ),
+                        child: AppTextField(
+                          label: 'Qualité observé',
+                          controller: item.qualiteController,
+                          hint: 'Ex: Conforme',
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-
-                  DropdownButtonFormField<String>(
-                    value: _origineMainOeuvre,
-                    items: _origines
-                        .map(
-                          (o) => DropdownMenuItem<String>(
-                            value: o,
-                            child: Text(o),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => setState(
-                      () => _origineMainOeuvre = v ?? _origineMainOeuvre,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Origine main d\'œuvre',
-                      prefixIcon: Icon(Icons.location_city),
-                    ),
-                    isExpanded: true,
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section B : EPI ───────────────────────────────────────
-                  _buildSectionTitle('B. Équipements de protection (EPI)'),
-                  const SizedBox(height: 8),
-                  _buildEpiCheckboxes(),
-                  const SizedBox(height: 20),
-
-                  // ── Section C : Matériaux ─────────────────────────────────
-                  _buildSectionTitle('C. Matériaux et approvisionnement'),
-                  const SizedBox(height: 12),
-
-                  ..._materiaux.asMap().entries.map(
-                    (entry) => _buildMateriauxRow(entry.key, entry.value),
-                  ),
-
-                  TextButton.icon(
-                    icon: const Icon(Icons.add),
-                    label: const Text('Ajouter un matériau'),
-                    onPressed: _addMateriau,
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Observations ──────────────────────────────────────────
-                  _buildSectionTitle('Observations'),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _observationsController,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      hintText:
-                          'Observations sur l\'organisation du chantier...',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.save_outlined),
-                          label: const Text('Enregistrer'),
-                          onPressed: _saveFormulaire,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.send),
-                          label: const Text('Soumettre'),
-                          onPressed: _submitFormulaire,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
                 ],
               ),
             ),
+            if (_materiaux.length > 1)
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: AppTheme.errorColor),
+                onPressed: () => setState(() {
+                  _materiaux[index].dispose();
+                  _materiaux.removeAt(index);
+                }),
+              ),
+          ],
+        ),
+      ],
     );
   }
 
-  Widget _buildEpiCheckboxes() {
-    final items = [
-      ('Casques', _casques, (v) => setState(() => _casques = v!)),
-      ('Gants', _gants, (v) => setState(() => _gants = v!)),
-      (
-        'Chaussures de sécurité',
-        _chaussures,
-        (v) => setState(() => _chaussures = v!),
-      ),
-      ('Gilets', _gilets, (v) => setState(() => _gilets = v!)),
-      ('Masques', _masques, (v) => setState(() => _masques = v!)),
-    ];
-    return Wrap(
-      children: items
-          .map(
-            (item) => SizedBox(
-              width: 160,
-              child: CheckboxListTile(
-                title: Text(item.$1, style: const TextStyle(fontSize: 13)),
-                value: item.$2,
-                onChanged: item.$3,
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-          )
-          .toList(),
+  Widget _epiToggle(String label, bool value, Function(bool) onChanged) {
+    return ActionChip(
+      label: Text(label, style: const TextStyle(fontSize: 10)),
+      avatar: value ? const Icon(Icons.check, size: 12, color: Colors.white) : null,
+      backgroundColor: value ? AppTheme.primaryColor : Colors.grey.shade200,
+      labelStyle: TextStyle(color: value ? Colors.white : Colors.black87),
+      padding: EdgeInsets.zero,
+      onPressed: () => onChanged(!value),
     );
   }
+}
 
-  Widget _buildMateriauxRow(int index, Map<String, TextEditingController> row) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 3,
-            child: TextFormField(
-              controller: row['nom'],
-              decoration: const InputDecoration(
-                labelText: 'Matériau',
-                isDense: true,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 2,
-            child: TextFormField(
-              controller: row['quantite'],
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Quantité',
-                isDense: true,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            flex: 2,
-            child: TextFormField(
-              controller: row['qualite'],
-              decoration: const InputDecoration(
-                labelText: 'Qualité',
-                isDense: true,
-              ),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-            onPressed: () => _removeMateriau(index),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
-        ],
-      ),
-    );
-  }
+class _MateriauItem {
+  final nomController = TextEditingController();
+  final quantiteController = TextEditingController();
+  final qualiteController = TextEditingController();
 
-  Widget _buildInfoBanner(String text) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.colorBlue.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.colorBlue.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.info_outline, color: AppTheme.colorBlue, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(color: AppTheme.colorBlue, fontSize: 13),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-        fontWeight: FontWeight.bold,
-        color: AppTheme.colorBlue,
-      ),
-    );
+  void dispose() {
+    nomController.dispose();
+    quantiteController.dispose();
+    qualiteController.dispose();
   }
 }

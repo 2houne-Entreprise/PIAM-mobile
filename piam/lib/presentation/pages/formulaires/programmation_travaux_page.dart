@@ -1,119 +1,181 @@
 import 'package:flutter/material.dart';
+import 'package:piam/config/app_theme.dart';
+import 'package:piam/presentation/widgets/app_form_fields.dart';
+import 'package:piam/presentation/widgets/form_header_widget.dart';
+import 'package:piam/services/database_service.dart';
 
+/// Formulaire — Programmation des travaux
+/// 
+/// Permet de planifier les activités à venir et le nombre de travaux associés.
 class ProgrammationTravauxPage extends StatefulWidget {
   final String formulaireId;
-  const ProgrammationTravauxPage({Key? key, required this.formulaireId})
-    : super(key: key);
+
+  const ProgrammationTravauxPage({Key? key, required this.formulaireId}) : super(key: key);
 
   @override
-  State<ProgrammationTravauxPage> createState() =>
-      _ProgrammationTravauxPageState();
+  State<ProgrammationTravauxPage> createState() => _ProgrammationTravauxPageState();
 }
 
 class _ProgrammationTravauxPageState extends State<ProgrammationTravauxPage> {
+  // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _isSaved = false;
 
-  DateTime? _dateActivite;
-  // ignore: unused_field
-  int? _nbTravaux;
-  // ignore: unused_field
-  String? _autre;
+  int? _localiteId;
+  dynamic _userId;
+
+  // Controllers
+  final _dateActiviteController = TextEditingController();
+  final _nbTravauxController = TextEditingController();
   final _autreController = TextEditingController();
 
   @override
   void dispose() {
+    _dateActiviteController.dispose();
+    _nbTravauxController.dispose();
     _autreController.dispose();
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _dateActivite ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-    if (d != null) setState(() => _dateActivite = d);
+  // ── Chargement ────────────────────────────────────────────────────────────
+
+  void _onLocalisationLoaded(int? localiteId, dynamic userId) {
+    setState(() {
+      _localiteId = localiteId;
+      _userId = userId;
+    });
+    if (localiteId != null) _loadSavedData(localiteId);
   }
 
-  Future<void> _submit() async {
+  Future<void> _loadSavedData(int localiteId) async {
+    final data = await DatabaseService().getQuestionnaire(
+      type: 'programmation_travaux',
+      localiteId: localiteId,
+    );
+    if (data == null || !mounted) return;
+
+    setState(() {
+      _dateActiviteController.text = data['dateActivite'] ?? '';
+      _nbTravauxController.text = data['nbTravaux']?.toString() ?? '';
+      _autreController.text = data['autre'] ?? '';
+      _isSaved = true;
+    });
+  }
+
+  // ── Sauvegarde ────────────────────────────────────────────────────────────
+
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Questionnaire envoyé'),
-          backgroundColor: Colors.green,
-        ),
+
+    try {
+      final dataMap = {
+        'dateActivite': _dateActiviteController.text,
+        'nbTravaux': int.tryParse(_nbTravauxController.text),
+        'autre': _autreController.text,
+      };
+
+      await DatabaseService().upsertQuestionnaire(
+        type: 'programmation_travaux',
+        localiteId: _localiteId,
+        dataMap: dataMap,
+        userId: _userId,
       );
-      Navigator.of(context).pop();
+
+      if (mounted) {
+        setState(() => _isSaved = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Programmation enregistrée avec succès'),
+            backgroundColor: AppTheme.successColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur : $e'), backgroundColor: AppTheme.errorColor),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  // ── Interface ─────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Programmation des Travaux')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  const Text('Programmation des travaux à venir.'),
-                  const SizedBox(height: 16),
-                  InkWell(
-                    onTap: _pickDate,
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Date de l’activité',
-                        prefixIcon: Icon(Icons.calendar_today),
-                      ),
-                      child: Text(
-                        _dateActivite != null
-                            ? '${_dateActivite!.day.toString().padLeft(2, '0')}/'
-                                  '${_dateActivite!.month.toString().padLeft(2, '0')}/'
-                                  '${_dateActivite!.year}'
-                            : 'Sélectionner une date',
-                        style: TextStyle(
-                          color: _dateActivite != null
-                              ? Colors.black87
-                              : Colors.grey,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    decoration: const InputDecoration(
-                      labelText: 'NB de travaux programmés',
-                    ),
-                    keyboardType: TextInputType.number,
-                    validator: (v) =>
-                        v == null || v.isEmpty ? 'Champ requis' : null,
-                    onSaved: (v) => _nbTravaux = int.tryParse(v ?? ''),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _autreController,
-                    decoration: const InputDecoration(
-                      labelText: 'Autre (texte libre)',
-                    ),
-                    maxLines: 2,
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.send),
-                    label: const Text('Envoyer'),
-                    onPressed: _submit,
-                  ),
-                ],
+      backgroundColor: const Color(0xFFF5F7FA),
+      appBar: AppBar(
+        title: const Text('Programmation des Travaux'),
+        actions: [
+          if (_isSaved)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: AppStatusBadge(
+                label: 'Enregistré',
+                color: AppTheme.successColor,
+                icon: Icons.check_circle_outline,
               ),
             ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            FormHeaderWidget(onDataLoaded: _onLocalisationLoaded),
+
+            // ── Section Programmation ─────────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Détails de la planification', icon: Icons.calendar_month_rounded),
+                const SizedBox(height: 8),
+                const Text('Programmation des travaux à venir sur le site.', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                const SizedBox(height: 16),
+                AppDateField(
+                  label: 'Date prévue de l\'activité',
+                  controller: _dateActiviteController,
+                  required: true,
+                ),
+                AppTextField(
+                  label: 'Nombre de travaux programmés',
+                  controller: _nbTravauxController,
+                  keyboardType: TextInputType.number,
+                  required: true,
+                  prefixIcon: Icons.format_list_numbered_rounded,
+                ),
+              ],
+            ),
+
+            // ── Section Note ───────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Informations complémentaires', icon: Icons.note_alt_outlined),
+                AppTextField(
+                  label: 'Autre (texte libre)',
+                  controller: _autreController,
+                  maxLines: 4,
+                  hint: 'Précisez ici toute autre information pertinente...',
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+            AppSubmitButton(
+              label: 'Enregistrer la programmation',
+              isLoading: _isLoading,
+              onPressed: _save,
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
     );
   }
 }

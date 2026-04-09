@@ -1,70 +1,62 @@
 import 'package:flutter/material.dart';
-import 'package:piam/services/database_service.dart';
+import 'package:piam/config/app_theme.dart';
+import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
-import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+import 'package:piam/services/database_service.dart';
 
+/// Formulaire — État des Lieux Ménage
+///
+/// Collecte composition du ménage, accès eau, statut latrine et DLM.
+/// Inclut une preuve photo optionnelle.
 class EtatLieuxMenagePage extends StatefulWidget {
   final String formulaireId;
+
   const EtatLieuxMenagePage({Key? key, required this.formulaireId})
-    : super(key: key);
+      : super(key: key);
 
   @override
   State<EtatLieuxMenagePage> createState() => _EtatLieuxMenagePageState();
 }
 
 class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
+  // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _isSaved = false;
 
-  // Localisation et données admin
+  // Localisation
   int? _localiteId;
   dynamic _userId;
-  DateTime? _dateActivite;
 
-  // Composition ménage
+  // ── Controllers ───────────────────────────────────────────────────────────
+  final _dateController = TextEditingController();
   final _nbTotalController = TextEditingController();
   final _nbHommesController = TextEditingController();
   final _nbFemmesController = TextEditingController();
   final _nbEnfantsController = TextEditingController();
-
-  // Eau
-  bool? _accesEau;
   final _difficulteEauController = TextEditingController();
+  final _observationsController = TextEditingController();
 
-  // Latrines
+  // ── Variables d'état pour radios/dropdowns ────────────────────────────────
+  bool? _accesEau;
   bool? _latrinesExiste;
-  // Formulaire A (si oui)
   String? _typeLatrine;
   bool? _latrineAmelioree;
   bool? _latrineDegradee;
   bool? _latrineUsageToujours;
   bool? _latrineVoisin;
   bool? _latrineDefecation;
-  // Formulaire B (si non)
   bool? _latrineVoisinNon;
   bool? _latrineDefecationNon;
-
-  // DLM
   bool? _dlmExiste;
-  String? _typeDLM; // 'eau_savon', 'eau_seule', 'aucun'
+  String? _typeDLM;
+  String? _photoPath;
 
-  // Photo
-  XFile? _photo;
-  final ImagePicker _picker = ImagePicker();
-
-  // Observations
-  final _observationsController = TextEditingController();
-
-  // ...existing code...
-
-  @override
-  void initState() {
-    super.initState();
-  }
+  // ── Cycle de vie ──────────────────────────────────────────────────────────
 
   @override
   void dispose() {
+    _dateController.dispose();
     _nbTotalController.dispose();
     _nbHommesController.dispose();
     _nbFemmesController.dispose();
@@ -74,42 +66,71 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _dateActivite ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
+  // ── Chargement ────────────────────────────────────────────────────────────
+
+  void _onLocalisationLoaded(int? localiteId, dynamic userId) {
+    setState(() {
+      _localiteId = localiteId;
+      _userId = userId;
+    });
+    if (localiteId != null) _loadSavedData(localiteId);
+  }
+
+  Future<void> _loadSavedData(int localiteId) async {
+    final data = await DatabaseService().getQuestionnaire(
+      type: 'etat_lieux_menage',
+      localiteId: localiteId,
     );
-    if (d != null) setState(() => _dateActivite = d);
+    if (data == null || !mounted) return;
+
+    _dateController.text = data['dateActivite'] ?? '';
+    _nbTotalController.text = data['nbTotal']?.toString() ?? '';
+    _nbHommesController.text = data['nbHommes']?.toString() ?? '';
+    _nbFemmesController.text = data['nbFemmes']?.toString() ?? '';
+    _nbEnfantsController.text = data['nbEnfants']?.toString() ?? '';
+    _difficulteEauController.text = data['difficulteEau'] ?? '';
+    _observationsController.text = data['observations'] ?? '';
+
+    setState(() {
+      _accesEau = data['accesEau'] as bool?;
+      _latrinesExiste = data['latrinesExiste'] as bool?;
+      _typeLatrine = data['typeLatrine'] as String?;
+      _latrineAmelioree = data['latrineAmelioree'] as bool?;
+      _latrineDegradee = data['latrineDegradee'] as bool?;
+      _latrineUsageToujours = data['latrineUsageToujours'] as bool?;
+      _latrineVoisin = data['latrineVoisin'] as bool?;
+      _latrineDefecation = data['latrineDefecation'] as bool?;
+      _latrineVoisinNon = data['latrineVoisinNon'] as bool?;
+      _latrineDefecationNon = data['latrineDefecationNon'] as bool?;
+      _dlmExiste = data['dlmExiste'] as bool?;
+      _typeDLM = data['typeDLM'] as String?;
+      _photoPath = data['photoPath'] as String?;
+      _isSaved = true;
+    });
   }
 
-  Future<void> _pickPhoto() async {
-    final picked = await _picker.pickImage(source: ImageSource.camera);
-    if (picked != null) setState(() => _photo = picked);
-  }
+  // ── Enregistrement ────────────────────────────────────────────────────────
 
-  Future<void> _saveDraft() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_photo == null) {
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Photo obligatoire'),
-          backgroundColor: Colors.red,
+          content: Text('Veuillez corriger les erreurs'),
+          backgroundColor: AppTheme.errorColor,
         ),
       );
       return;
     }
+
     setState(() => _isLoading = true);
-    final db = DatabaseService();
-    final data = {
-      'type': 'etat_lieux_menage',
-      'data_json': {
-        'dateActivite': _dateActivite?.toIso8601String(),
-        'nbTotal': _nbTotalController.text,
-        'nbHommes': _nbHommesController.text,
-        'nbFemmes': _nbFemmesController.text,
-        'nbEnfants': _nbEnfantsController.text,
+
+    try {
+      final dataMap = {
+        'dateActivite': _dateController.text,
+        'nbTotal': int.tryParse(_nbTotalController.text),
+        'nbHommes': int.tryParse(_nbHommesController.text),
+        'nbFemmes': int.tryParse(_nbFemmesController.text),
+        'nbEnfants': int.tryParse(_nbEnfantsController.text),
         'accesEau': _accesEau,
         'difficulteEau': _difficulteEauController.text,
         'latrinesExiste': _latrinesExiste,
@@ -123,492 +144,326 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
         'latrineDefecationNon': _latrineDefecationNon,
         'dlmExiste': _dlmExiste,
         'typeDLM': _typeDLM,
-        'photoPath': _photo?.path,
+        'photoPath': _photoPath,
         'observations': _observationsController.text,
-      }.toString(),
-      'date': DateTime.now().toIso8601String(),
-      'user_id': _userId,
-      'localite_id': _localiteId,
-      'photo_path': _photo?.path,
-    };
-    await db.insertQuestionnaire(data);
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Questionnaire sauvegardé'),
-          backgroundColor: Colors.green,
-        ),
+      };
+
+      await DatabaseService().upsertQuestionnaire(
+        type: 'etat_lieux_menage',
+        localiteId: _localiteId,
+        dataMap: dataMap,
+        userId: _userId,
       );
+
+      if (mounted) {
+        setState(() => _isSaved = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 8),
+              Text('État des Lieux Ménage enregistré'),
+            ]),
+            backgroundColor: AppTheme.successColor,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur : $e'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_photo == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Photo obligatoire'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    setState(() => _isLoading = true);
-    final db = DatabaseService();
-    final data = {
-      'type': 'etat_lieux_menage',
-      'data_json': {
-        'dateActivite': _dateActivite?.toIso8601String(),
-        'nbTotal': _nbTotalController.text,
-        'nbHommes': _nbHommesController.text,
-        'nbFemmes': _nbFemmesController.text,
-        'nbEnfants': _nbEnfantsController.text,
-        'accesEau': _accesEau,
-        'difficulteEau': _difficulteEauController.text,
-        'latrinesExiste': _latrinesExiste,
-        'typeLatrine': _typeLatrine,
-        'latrineAmelioree': _latrineAmelioree,
-        'latrineDegradee': _latrineDegradee,
-        'latrineUsageToujours': _latrineUsageToujours,
-        'latrineVoisin': _latrineVoisin,
-        'latrineDefecation': _latrineDefecation,
-        'latrineVoisinNon': _latrineVoisinNon,
-        'latrineDefecationNon': _latrineDefecationNon,
-        'dlmExiste': _dlmExiste,
-        'typeDLM': _typeDLM,
-        'photoPath': _photo?.path,
-        'observations': _observationsController.text,
-      }.toString(),
-      'date': DateTime.now().toIso8601String(),
-      'user_id': _userId,
-      'localite_id': _localiteId,
-      'photo_path': _photo?.path,
-    };
-    await db.insertQuestionnaire(data);
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Questionnaire envoyé'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      Navigator.of(context).pop();
-    }
+  // ── Helpers d'interface ───────────────────────────────────────────────────
+
+  /// Crée une ligne Question / Dropdown Oui-Non
+  Widget _buildOuiNon({
+    required String label,
+    required bool? value,
+    required void Function(bool?) onChanged,
+    bool required = false,
+  }) {
+    return AppDropdownField<bool>(
+      label: label,
+      value: value,
+      required: required,
+      items: const [
+        DropdownMenuItem(value: true, child: Text('Oui')),
+        DropdownMenuItem(value: false, child: Text('Non')),
+      ],
+      onChanged: onChanged,
+    );
   }
+
+  // ── Interface ─────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('État des Lieux – Ménage')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  FormHeaderWidget(
-                    onDataLoaded: (localiteId, userId) {
-                      setState(() {
-                        _localiteId = localiteId;
-                        _userId = userId;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  InkWell(
-                    onTap: _pickDate,
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Date de l’activité',
-                        prefixIcon: Icon(Icons.calendar_today),
-                      ),
-                      child: Text(
-                        _dateActivite != null
-                            ? '${_dateActivite!.day.toString().padLeft(2, '0')}/'
-                                  '${_dateActivite!.month.toString().padLeft(2, '0')}/'
-                                  '${_dateActivite!.year}'
-                            : 'Sélectionner une date',
-                        style: TextStyle(
-                          color: _dateActivite != null
-                              ? Colors.black87
-                              : Colors.grey,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const Divider(height: 32),
-                  // 3. Composition du ménage
-                  const Text(
-                    'Composition du ménage',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  TextFormField(
-                    controller: _nbTotalController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre total de personnes',
-                    ),
-                    keyboardType: TextInputType.number,
-                    validator: (v) =>
-                        v == null || v.isEmpty ? 'Champ requis' : null,
-                  ),
-                  TextFormField(
-                    controller: _nbHommesController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre d’hommes',
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                  TextFormField(
-                    controller: _nbFemmesController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre de femmes',
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                  TextFormField(
-                    controller: _nbEnfantsController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nombre d’enfants de moins de 5 ans',
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                  const Divider(height: 32),
-                  // 4. Accès à l’eau
-                  const Text(
-                    'Accès à l’eau',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Row(
-                    children: [
-                      const Text('Accès à l’eau ?'),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: DropdownButtonFormField<bool>(
-                          value: _accesEau,
-                          items: const [
-                            DropdownMenuItem(value: true, child: Text('Oui')),
-                            DropdownMenuItem(value: false, child: Text('Non')),
-                          ],
-                          onChanged: (v) => setState(() => _accesEau = v),
-                          validator: (v) => v == null ? 'Champ requis' : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_accesEau == false)
-                    TextFormField(
-                      controller: _difficulteEauController,
-                      decoration: const InputDecoration(
-                        labelText: 'Type de difficulté (optionnel)',
-                      ),
-                    ),
-                  const Divider(height: 32),
-                  // 5. Latrines (logique conditionnelle)
-                  const Text(
-                    'Le ménage dispose-t-il d’une latrine ?',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: RadioListTile<bool>(
-                          title: const Text('Oui'),
-                          value: true,
-                          groupValue: _latrinesExiste,
-                          onChanged: (v) => setState(() => _latrinesExiste = v),
-                        ),
-                      ),
-                      Expanded(
-                        child: RadioListTile<bool>(
-                          title: const Text('Non'),
-                          value: false,
-                          groupValue: _latrinesExiste,
-                          onChanged: (v) => setState(() => _latrinesExiste = v),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_latrinesExiste == true) ...[
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: _typeLatrine,
-                      decoration: const InputDecoration(
-                        labelText: 'Type de latrine',
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'traditionnelle',
-                          child: Text('Traditionnelle'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'amelioree',
-                          child: Text('Améliorée'),
-                        ),
-                        DropdownMenuItem(value: 'autre', child: Text('Autre')),
-                      ],
-                      onChanged: (v) => setState(() => _typeLatrine = v),
-                    ),
-                    Row(
-                      children: [
-                        const Text('Latrine améliorée ?'),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<bool>(
-                            value: _latrineAmelioree,
-                            items: const [
-                              DropdownMenuItem(value: true, child: Text('Oui')),
-                              DropdownMenuItem(
-                                value: false,
-                                child: Text('Non'),
-                              ),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _latrineAmelioree = v),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        const Text('Latrine dégradée ?'),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<bool>(
-                            value: _latrineDegradee,
-                            items: const [
-                              DropdownMenuItem(value: true, child: Text('Oui')),
-                              DropdownMenuItem(
-                                value: false,
-                                child: Text('Non'),
-                              ),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _latrineDegradee = v),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        const Text('Utilisez-vous toujours cette latrine ?'),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<bool>(
-                            value: _latrineUsageToujours,
-                            items: const [
-                              DropdownMenuItem(value: true, child: Text('Oui')),
-                              DropdownMenuItem(
-                                value: false,
-                                child: Text('Non'),
-                              ),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _latrineUsageToujours = v),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        const Text('Utilisez-vous la latrine du voisin ?'),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<bool>(
-                            value: _latrineVoisin,
-                            items: const [
-                              DropdownMenuItem(value: true, child: Text('Oui')),
-                              DropdownMenuItem(
-                                value: false,
-                                child: Text('Non'),
-                              ),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _latrineVoisin = v),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        const Text(
-                          'Pratiquez-vous la défécation à l’air libre ?',
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<bool>(
-                            value: _latrineDefecation,
-                            items: const [
-                              DropdownMenuItem(value: true, child: Text('Oui')),
-                              DropdownMenuItem(
-                                value: false,
-                                child: Text('Non'),
-                              ),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _latrineDefecation = v),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  if (_latrinesExiste == false) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Text('Utilisez-vous la latrine d’un voisin ?'),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<bool>(
-                            value: _latrineVoisinNon,
-                            items: const [
-                              DropdownMenuItem(value: true, child: Text('Oui')),
-                              DropdownMenuItem(
-                                value: false,
-                                child: Text('Non'),
-                              ),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _latrineVoisinNon = v),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        const Text(
-                          'Pratiquez-vous la défécation à l’air libre ?',
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<bool>(
-                            value: _latrineDefecationNon,
-                            items: const [
-                              DropdownMenuItem(value: true, child: Text('Oui')),
-                              DropdownMenuItem(
-                                value: false,
-                                child: Text('Non'),
-                              ),
-                            ],
-                            onChanged: (v) =>
-                                setState(() => _latrineDefecationNon = v),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  const Divider(height: 32),
-                  // 6. DLM
-                  const Text(
-                    'Dispositif de lavage des mains (DLM)',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Row(
-                    children: [
-                      const Text(
-                        'Disposez-vous d’un dispositif de lavage des mains ?',
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: DropdownButtonFormField<bool>(
-                          value: _dlmExiste,
-                          items: const [
-                            DropdownMenuItem(value: true, child: Text('Oui')),
-                            DropdownMenuItem(value: false, child: Text('Non')),
-                          ],
-                          onChanged: (v) => setState(() => _dlmExiste = v),
-                          validator: (v) => v == null ? 'Champ requis' : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_dlmExiste == true) ...[
-                    Row(
-                      children: [
-                        const Text('Type de DLM :'),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: _typeDLM,
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'eau_savon',
-                                child: Text('Eau + Savon'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'eau_seule',
-                                child: Text('Eau seule'),
-                              ),
-                            ],
-                            onChanged: (v) => setState(() => _typeDLM = v),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  if (_dlmExiste == false) const Text('Aucun dispositif'),
-                  const Divider(height: 32),
-                  // 7. Preuve photo
-                  const Text(
-                    'Preuve (photo obligatoire)',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  _photo == null
-                      ? ElevatedButton.icon(
-                          icon: const Icon(Icons.camera_alt),
-                          label: const Text('Prendre une photo'),
-                          onPressed: _pickPhoto,
-                        )
-                      : Column(
-                          children: [
-                            Image.file(File(_photo!.path), height: 180),
-                            TextButton.icon(
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Changer la photo'),
-                              onPressed: _pickPhoto,
-                            ),
-                          ],
-                        ),
-                  const Divider(height: 32),
-                  // 8. Observations
-                  const Text(
-                    'Observations',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  TextFormField(
-                    controller: _observationsController,
-                    decoration: const InputDecoration(
-                      labelText: 'Remarques de l’enquêteur',
-                    ),
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 24),
-                  // 9. Validation
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: _isLoading ? null : _saveDraft,
-                          child: const Text('Enregistrer'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.send),
-                          label: const Text('Envoyer'),
-                          onPressed: _isLoading ? null : _submit,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+      backgroundColor: const Color(0xFFF5F7FA),
+      appBar: AppBar(
+        title: const Text('État des Lieux – Ménage'),
+        actions: [
+          if (_isSaved)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: AppStatusBadge(
+                label: 'Enregistré',
+                color: AppTheme.successColor,
+                icon: Icons.check_circle_outline,
               ),
             ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // ── Localisation ─────────────────────────────────────────────
+            FormHeaderWidget(onDataLoaded: _onLocalisationLoaded),
+
+            // ── Date ─────────────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(
+                    title: 'Date de l\'activité', icon: Icons.event_note),
+                AppDateField(
+                  label: 'Date de l\'activité',
+                  controller: _dateController,
+                  required: true,
+                  lastDate: DateTime.now(),
+                ),
+              ],
+            ),
+
+            // ── Composition du ménage ─────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(
+                    title: 'Composition du ménage', icon: Icons.family_restroom),
+                AppNumberField(
+                  label: 'Nombre total de personnes',
+                  controller: _nbTotalController,
+                  required: true,
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppNumberField(
+                        label: 'Hommes',
+                        controller: _nbHommesController,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: AppNumberField(
+                        label: 'Femmes',
+                        controller: _nbFemmesController,
+                      ),
+                    ),
+                  ],
+                ),
+                AppNumberField(
+                  label: 'Enfants < 5 ans',
+                  controller: _nbEnfantsController,
+                ),
+              ],
+            ),
+
+            // ── Accès à l'eau ─────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(
+                    title: 'Accès à l\'eau', icon: Icons.water_drop),
+                _buildOuiNon(
+                  label: 'Accès à l\'eau potable',
+                  value: _accesEau,
+                  required: true,
+                  onChanged: (v) => setState(() => _accesEau = v),
+                ),
+                if (_accesEau == false)
+                  AppTextField(
+                    label: 'Type de difficulté (optionnel)',
+                    controller: _difficulteEauController,
+                    prefixIcon: Icons.warning_amber_outlined,
+                  ),
+              ],
+            ),
+
+            // ── Latrines ──────────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(
+                    title: 'Latrine du ménage', icon: Icons.home_repair_service),
+                Row(
+                  children: [
+                    Expanded(
+                      child: RadioListTile<bool>(
+                        title: const Text('Dispose d\'une latrine'),
+                        value: true,
+                        groupValue: _latrinesExiste,
+                        activeColor: AppTheme.successColor,
+                        onChanged: (v) => setState(() => _latrinesExiste = v),
+                      ),
+                    ),
+                    Expanded(
+                      child: RadioListTile<bool>(
+                        title: const Text('Pas de latrine'),
+                        value: false,
+                        groupValue: _latrinesExiste,
+                        activeColor: AppTheme.errorColor,
+                        onChanged: (v) => setState(() => _latrinesExiste = v),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Si OUI
+                if (_latrinesExiste == true) ...[
+                  const Divider(),
+                  AppDropdownField<String>(
+                    label: 'Type de latrine',
+                    value: _typeLatrine,
+                    prefixIcon: Icons.category_outlined,
+                    items: const [
+                      DropdownMenuItem(
+                          value: 'traditionnelle', child: Text('Traditionnelle')),
+                      DropdownMenuItem(
+                          value: 'amelioree', child: Text('Améliorée')),
+                      DropdownMenuItem(value: 'autre', child: Text('Autre')),
+                    ],
+                    onChanged: (v) => setState(() => _typeLatrine = v),
+                  ),
+                  _buildOuiNon(
+                    label: 'Latrine améliorée ?',
+                    value: _latrineAmelioree,
+                    onChanged: (v) => setState(() => _latrineAmelioree = v),
+                  ),
+                  _buildOuiNon(
+                    label: 'Latrine dégradée ?',
+                    value: _latrineDegradee,
+                    onChanged: (v) => setState(() => _latrineDegradee = v),
+                  ),
+                  _buildOuiNon(
+                    label: 'Utilisez-vous toujours cette latrine ?',
+                    value: _latrineUsageToujours,
+                    onChanged: (v) => setState(() => _latrineUsageToujours = v),
+                  ),
+                  _buildOuiNon(
+                    label: 'Utilisez-vous aussi la latrine du voisin ?',
+                    value: _latrineVoisin,
+                    onChanged: (v) => setState(() => _latrineVoisin = v),
+                  ),
+                  _buildOuiNon(
+                    label: 'Pratiquez-vous la défécation à l\'air libre ?',
+                    value: _latrineDefecation,
+                    onChanged: (v) => setState(() => _latrineDefecation = v),
+                  ),
+                  const SizedBox(height: 8),
+                  // Photo (optionnelle)
+                  OutlinedButton.icon(
+                    icon: Icon(
+                      _photoPath != null ? Icons.check_circle : Icons.camera_alt,
+                      color: _photoPath != null
+                          ? AppTheme.successColor
+                          : AppTheme.primaryColor,
+                    ),
+                    label: Text(
+                      _photoPath != null ? 'Photo prise ✓' : 'Prendre une photo',
+                    ),
+                    onPressed: () {
+                      // TODO: Intégrer image_picker
+                      setState(() => _photoPath = 'photo_placeholder.jpg');
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _photoPath != null
+                          ? AppTheme.successColor
+                          : AppTheme.primaryColor,
+                    ),
+                  ),
+                ],
+
+                // Si NON
+                if (_latrinesExiste == false) ...[
+                  const Divider(),
+                  _buildOuiNon(
+                    label: 'Utilisez-vous la latrine d\'un voisin ?',
+                    value: _latrineVoisinNon,
+                    onChanged: (v) => setState(() => _latrineVoisinNon = v),
+                  ),
+                  _buildOuiNon(
+                    label: 'Pratiquez-vous la défécation à l\'air libre ?',
+                    value: _latrineDefecationNon,
+                    onChanged: (v) => setState(() => _latrineDefecationNon = v),
+                  ),
+                ],
+              ],
+            ),
+
+            // ── DLM ───────────────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(
+                    title: 'Dispositif de lavage des mains (DLM)',
+                    icon: Icons.wash),
+                _buildOuiNon(
+                  label: 'Disposez-vous d\'un DLM ?',
+                  value: _dlmExiste,
+                  required: true,
+                  onChanged: (v) => setState(() => _dlmExiste = v),
+                ),
+                if (_dlmExiste == true)
+                  AppDropdownField<String>(
+                    label: 'Type de dispositif',
+                    value: _typeDLM,
+                    prefixIcon: Icons.category_outlined,
+                    items: const [
+                      DropdownMenuItem(
+                          value: 'eau_savon', child: Text('Eau + Savon')),
+                      DropdownMenuItem(
+                          value: 'eau_seule', child: Text('Eau seule')),
+                    ],
+                    onChanged: (v) => setState(() => _typeDLM = v),
+                  ),
+              ],
+            ),
+
+            // ── Observations ──────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(
+                    title: 'Observations', icon: Icons.comment_outlined),
+                AppTextField(
+                  label: 'Remarques de l\'enquêteur',
+                  controller: _observationsController,
+                  maxLines: 3,
+                  prefixIcon: Icons.edit_note,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // ── Bouton ────────────────────────────────────────────────────
+            AppSubmitButton(
+              label: 'Enregistrer',
+              isLoading: _isLoading,
+              onPressed: _save,
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -2,23 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:piam/config/app_strings.dart';
 import 'package:piam/config/app_theme.dart';
 import 'package:piam/data/reference_data.dart';
+import 'package:piam/presentation/widgets/app_form_fields.dart';
+import 'package:piam/services/database_service.dart';
 
-/// Formulaire 2 – Identification du site
+/// Formulaire 2 — Identification du site
+///
+/// Ce formulaire peut être rempli indépendamment du paramétrage initial.
+/// Il permet à l'utilisateur de choisir manuellement la localisation
+/// (wilaya, moughataa, commune, localité) et de saisir les infos du projet.
 class IdentificationPage extends StatefulWidget {
   final String formulaireId;
 
   const IdentificationPage({Key? key, required this.formulaireId})
-    : super(key: key);
+      : super(key: key);
 
   @override
   State<IdentificationPage> createState() => _IdentificationPageState();
 }
 
 class _IdentificationPageState extends State<IdentificationPage> {
+  // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _isSaved = false;
 
-  // Localisation en cascade
+  // Localisation en cascade (sélections)
   int? _selectedWilayaId;
   int? _selectedMoughataaId;
   int? _selectedCommuneId;
@@ -28,26 +36,20 @@ class _IdentificationPageState extends State<IdentificationPage> {
   List<Map<String, dynamic>> _communes = [];
   List<Map<String, dynamic>> _localites = [];
 
-  // Etablissement
+  // ── Controllers ───────────────────────────────────────────────────────────
   final _codeAnsadeController = TextEditingController();
-  String _etablissement = 'Ecole fondamentale';
-  // String _typeInfra = 'Ecole';
-
-  // Marché travaux
   final _intituleProjetController = TextEditingController();
   final _marcheTravauxController = TextEditingController();
   final _numeroMarcheController = TextEditingController();
   final _nomEntrepriseController = TextEditingController();
   final _delaiMarcheController = TextEditingController();
-
-  // Contrôle travaux
-  final _marcheControleController = TextEditingController();
   final _bureauControleController = TextEditingController();
   final _nomControleurController = TextEditingController();
-
-  // Statistiques
   final _effectifController = TextEditingController();
   final _nbPotentielsController = TextEditingController();
+
+  // Type d'établissement sélectionné
+  String _etablissement = 'Ecole fondamentale';
 
   static const List<String> _etablissements = [
     'Ecole fondamentale',
@@ -55,17 +57,20 @@ class _IdentificationPageState extends State<IdentificationPage> {
     'Centre de santé',
     'Poste de santé',
     'Mairie',
-    'Mosque',
+    'Mosquée',
     'Autre',
   ];
 
-  // static const List<String> _typesInfra = [
-  //   'Ecole',
-  //   'Centre santé',
-  //   'Poste de santé',
-  //   'Gare routiere',
-  //   'Autre',
-  // ];
+  // ── Cycle de vie ──────────────────────────────────────────────────────────
+
+  @override
+  void initState() {
+    super.initState();
+    // Le chargement des données sauvegardées se fait dans
+    // _onLocaliteChanged() quand l'utilisateur sélectionne une localité,
+    // OU au démarrage si le paramétrage a une localité enregistrée
+    _tryLoadFromParametrage();
+  }
 
   @override
   void dispose() {
@@ -75,13 +80,77 @@ class _IdentificationPageState extends State<IdentificationPage> {
     _numeroMarcheController.dispose();
     _nomEntrepriseController.dispose();
     _delaiMarcheController.dispose();
-    _marcheControleController.dispose();
     _bureauControleController.dispose();
     _nomControleurController.dispose();
     _effectifController.dispose();
     _nbPotentielsController.dispose();
     super.dispose();
   }
+
+  // ── Chargement ────────────────────────────────────────────────────────────
+
+  /// Essaie de récupérer la localité depuis le paramétrage et pré-charge les données.
+  Future<void> _tryLoadFromParametrage() async {
+    final param = await DatabaseService().getParametreUtilisateur();
+    if (param == null || !mounted) return;
+
+    final wilayaId = param['wilaya_id'] as int?;
+    final moughataaId = param['moughataa_id'] as int?;
+    final communeId = param['commune_id'] as int?;
+    final localiteId = param['localite_id'] as int?;
+
+    if (wilayaId == null) return;
+
+    setState(() {
+      _selectedWilayaId = wilayaId;
+      _moughataas = ReferenceData.getMoughatasByWilaya(wilayaId);
+      if (moughataaId != null) {
+        _selectedMoughataaId = moughataaId;
+        _communes = ReferenceData.getCommunesByMoughataa(moughataaId);
+        if (communeId != null) {
+          _selectedCommuneId = communeId;
+          _localites = ReferenceData.getLocalitesByCommune(communeId);
+          if (localiteId != null) {
+            _selectedLocaliteId = localiteId;
+          }
+        }
+      }
+    });
+
+    if (localiteId != null) {
+      await _loadSavedData(localiteId);
+    }
+  }
+
+  /// Charge les données du formulaire d'identification pour une localité donnée.
+  Future<void> _loadSavedData(int localiteId) async {
+    final data = await DatabaseService().getQuestionnaire(
+      type: 'identification',
+      localiteId: localiteId,
+    );
+
+    if (data == null || !mounted) return;
+
+    _codeAnsadeController.text = data['codeAnsade'] ?? '';
+    _intituleProjetController.text = data['intituleProjet'] ?? '';
+    _marcheTravauxController.text = data['marcheTravaux'] ?? '';
+    _numeroMarcheController.text = data['numeroMarche'] ?? '';
+    _nomEntrepriseController.text = data['nomEntreprise'] ?? '';
+    _delaiMarcheController.text = data['delaiMarche']?.toString() ?? '';
+    _bureauControleController.text = data['bureauControle'] ?? '';
+    _nomControleurController.text = data['nomControleur'] ?? '';
+    _effectifController.text = data['effectif']?.toString() ?? '';
+    _nbPotentielsController.text = data['nbPotentiels']?.toString() ?? '';
+
+    if (data['typeEtablissement'] != null &&
+        _etablissements.contains(data['typeEtablissement'])) {
+      setState(() => _etablissement = data['typeEtablissement']);
+    }
+
+    if (mounted) setState(() => _isSaved = true);
+  }
+
+  // ── Navigation en cascade (wilaya → moughataa → commune → localité) ───────
 
   void _onWilayaChanged(int? wilayaId) {
     setState(() {
@@ -94,7 +163,9 @@ class _IdentificationPageState extends State<IdentificationPage> {
           : [];
       _communes = [];
       _localites = [];
+      _isSaved = false;
     });
+    _clearControllers();
   }
 
   void _onMoughataaChanged(int? moughataaId) {
@@ -106,7 +177,9 @@ class _IdentificationPageState extends State<IdentificationPage> {
           ? ReferenceData.getCommunesByMoughataa(moughataaId)
           : [];
       _localites = [];
+      _isSaved = false;
     });
+    _clearControllers();
   }
 
   void _onCommuneChanged(int? communeId) {
@@ -116,49 +189,138 @@ class _IdentificationPageState extends State<IdentificationPage> {
       _localites = communeId != null
           ? ReferenceData.getLocalitesByCommune(communeId)
           : [];
+      _isSaved = false;
     });
+    _clearControllers();
   }
 
-  Future<void> _saveFormulaire() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) {
-      setState(() => _isLoading = false);
+  void _onLocaliteChanged(int? localiteId) {
+    setState(() {
+      _selectedLocaliteId = localiteId;
+      _isSaved = false;
+    });
+    _clearControllers();
+    if (localiteId != null) _loadSavedData(localiteId);
+  }
+
+  /// Efface tous les champs quand la localité change pour éviter la confusion.
+  void _clearControllers() {
+    _codeAnsadeController.clear();
+    _intituleProjetController.clear();
+    _marcheTravauxController.clear();
+    _numeroMarcheController.clear();
+    _nomEntrepriseController.clear();
+    _delaiMarcheController.clear();
+    _bureauControleController.clear();
+    _nomControleurController.clear();
+    _effectifController.clear();
+    _nbPotentielsController.clear();
+  }
+
+  // ── Enregistrement ────────────────────────────────────────────────────────
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Identification enregistrée'),
-          backgroundColor: Colors.green,
+          content: Text('Veuillez corriger les erreurs avant d\'enregistrer'),
+          backgroundColor: AppTheme.errorColor,
         ),
       );
+      return;
+    }
+
+    if (_selectedLocaliteId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Veuillez sélectionner une localité'),
+          backgroundColor: AppTheme.warningColor,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final dataMap = {
+        'wilayaId': _selectedWilayaId,
+        'moughataaId': _selectedMoughataaId,
+        'communeId': _selectedCommuneId,
+        'localiteId': _selectedLocaliteId,
+        'typeEtablissement': _etablissement,
+        'codeAnsade': _codeAnsadeController.text,
+        'intituleProjet': _intituleProjetController.text,
+        'marcheTravaux': _marcheTravauxController.text,
+        'numeroMarche': _numeroMarcheController.text,
+        'nomEntreprise': _nomEntrepriseController.text,
+        'delaiMarche': int.tryParse(_delaiMarcheController.text),
+        'bureauControle': _bureauControleController.text,
+        'nomControleur': _nomControleurController.text,
+        'effectif': int.tryParse(_effectifController.text),
+        'nbPotentiels': int.tryParse(_nbPotentielsController.text),
+      };
+
+      await DatabaseService().upsertQuestionnaire(
+        type: 'identification',
+        localiteId: _selectedLocaliteId,
+        dataMap: dataMap,
+      );
+
+      if (mounted) {
+        setState(() => _isSaved = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Identification enregistrée avec succès'),
+              ],
+            ),
+            backgroundColor: AppTheme.successColor,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur : $e'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _submitFormulaire() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Identification soumise pour validation'),
-          backgroundColor: Colors.blue,
-        ),
-      );
-    }
-  }
+  // ── Interface ─────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text('Identification'),
+        title: const Text('Identification du site'),
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
         ),
+        actions: [
+          if (_isSaved)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: AppStatusBadge(
+                label: 'Enregistré',
+                color: AppTheme.successColor,
+                icon: Icons.check_circle_outline,
+              ),
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -167,303 +329,191 @@ class _IdentificationPageState extends State<IdentificationPage> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  _buildInfoBanner(
-                    'Remplissez les informations d\'identification du site',
+                  AppInfoBanner(
+                    message:
+                        'Remplissez les informations d\'identification du site. Les données sont sauvegardées localement.',
                   ),
-                  const SizedBox(height: 20),
 
-                  // ── Section A : Localisation ──────────────────────────────
-                  _buildSectionTitle('A. Localisation géographique'),
-                  const SizedBox(height: 12),
-
-                  // Wilaya
-                  _buildDropdownField<int>(
-                    label: 'Wilaya',
-                    value: _selectedWilayaId,
-                    items: ReferenceData.wilayas
-                        .map(
-                          (w) => DropdownMenuItem<int>(
-                            value: w['id'] as int,
-                            child: Text(w['intitule'] as String),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: _onWilayaChanged,
-                    hint: 'Sélectionner une wilaya',
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Moughataa
-                  _buildDropdownField<int>(
-                    label: 'Moughataa',
-                    value: _selectedMoughataaId,
-                    items: _moughataas
-                        .map(
-                          (m) => DropdownMenuItem<int>(
-                            value: m['id'] as int,
-                            child: Text(m['intitule'] as String),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: _onMoughataaChanged,
-                    hint: 'Sélectionner une moughataa',
-                    enabled: _selectedWilayaId != null,
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Commune
-                  _buildDropdownField<int>(
-                    label: 'Commune',
-                    value: _selectedCommuneId,
-                    items: _communes
-                        .map(
-                          (c) => DropdownMenuItem<int>(
-                            value: c['id'] as int,
-                            child: Text(c['intitule'] as String),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: _onCommuneChanged,
-                    hint: 'Sélectionner une commune',
-                    enabled: _selectedMoughataaId != null,
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Localité
-                  _buildDropdownField<int>(
-                    label: 'Localité',
-                    value: _selectedLocaliteId,
-                    items: _localites
-                        .map(
-                          (l) => DropdownMenuItem<int>(
-                            value: l['id'] as int,
-                            child: Text(l['intitule'] as String),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => setState(() => _selectedLocaliteId = v),
-                    hint: 'Sélectionner une localité',
-                    enabled: _selectedCommuneId != null,
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Code ANSADE
-                  TextFormField(
-                    controller: _codeAnsadeController,
-                    decoration: const InputDecoration(
-                      labelText: 'Code ANSADE',
-                      hintText: 'Ex: 01-1-01-001',
-                      prefixIcon: Icon(Icons.code),
-                    ),
-                    validator: (v) => (v == null || v.isEmpty)
-                        ? AppStrings.requiredField
-                        : null,
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Type d'établissement
-                  _buildDropdownField<String>(
-                    label: 'Type d\'établissement',
-                    value: _etablissement,
-                    items: _etablissements
-                        .map(
-                          (e) => DropdownMenuItem<String>(
-                            value: e,
-                            child: Text(e),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) =>
-                        setState(() => _etablissement = v ?? _etablissement),
-                    hint: 'Type d\'établissement',
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section B : Marché travaux ────────────────────────────
-                  _buildSectionTitle('B. Marché des travaux'),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _intituleProjetController,
-                    decoration: const InputDecoration(
-                      labelText: 'Intitulé du projet',
-                      prefixIcon: Icon(Icons.assignment),
-                    ),
-                    validator: (v) => (v == null || v.isEmpty)
-                        ? AppStrings.requiredField
-                        : null,
-                  ),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _marcheTravauxController,
-                    decoration: const InputDecoration(
-                      labelText: 'Marché des travaux',
-                      prefixIcon: Icon(Icons.description),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _numeroMarcheController,
-                    decoration: const InputDecoration(
-                      labelText: 'Numéro du marché',
-                      prefixIcon: Icon(Icons.numbers),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _nomEntrepriseController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nom de l\'entreprise',
-                      prefixIcon: Icon(Icons.business),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _delaiMarcheController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Délai du marché (jours)',
-                      prefixIcon: Icon(Icons.timer),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section C : Contrôle des travaux ─────────────────────
-                  _buildSectionTitle('C. Contrôle des travaux'),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _bureauControleController,
-                    decoration: const InputDecoration(
-                      labelText: 'Bureau de contrôle',
-                      prefixIcon: Icon(Icons.account_balance),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _nomControleurController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nom du contrôleur',
-                      prefixIcon: Icon(Icons.person),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section D : Statistiques ──────────────────────────────
-                  _buildSectionTitle('D. Population concernée'),
-                  const SizedBox(height: 12),
-
-                  Row(
+                  // ── A. Localisation ───────────────────────────────────
+                  AppFormCard(
                     children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _effectifController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Effectif',
-                            prefixIcon: Icon(Icons.group),
-                          ),
-                        ),
+                      AppSectionTitle(
+                        title: 'A. Localisation géographique',
+                        icon: Icons.location_on,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _nbPotentielsController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Nb. potentiels',
-                            prefixIcon: Icon(Icons.people_outline),
-                          ),
-                        ),
+                      AppDropdownField<int>(
+                        label: 'Wilaya',
+                        value: _selectedWilayaId,
+                        required: true,
+                        prefixIcon: Icons.map,
+                        items: ReferenceData.wilayas
+                            .map((w) => DropdownMenuItem<int>(
+                                  value: w['id'] as int,
+                                  child: Text(w['intitule'] as String),
+                                ))
+                            .toList(),
+                        onChanged: _onWilayaChanged,
+                      ),
+                      AppDropdownField<int>(
+                        label: 'Moughataa',
+                        value: _selectedMoughataaId,
+                        enabled: _selectedWilayaId != null,
+                        prefixIcon: Icons.map_outlined,
+                        items: _moughataas
+                            .map((m) => DropdownMenuItem<int>(
+                                  value: m['id'] as int,
+                                  child: Text(m['intitule'] as String),
+                                ))
+                            .toList(),
+                        onChanged: _onMoughataaChanged,
+                      ),
+                      AppDropdownField<int>(
+                        label: 'Commune',
+                        value: _selectedCommuneId,
+                        enabled: _selectedMoughataaId != null,
+                        prefixIcon: Icons.location_city,
+                        items: _communes
+                            .map((c) => DropdownMenuItem<int>(
+                                  value: c['id'] as int,
+                                  child: Text(c['intitule'] as String),
+                                ))
+                            .toList(),
+                        onChanged: _onCommuneChanged,
+                      ),
+                      AppDropdownField<int>(
+                        label: 'Localité',
+                        value: _selectedLocaliteId,
+                        required: true,
+                        enabled: _selectedCommuneId != null,
+                        prefixIcon: Icons.home_outlined,
+                        items: _localites
+                            .map((l) => DropdownMenuItem<int>(
+                                  value: l['id'] as int,
+                                  child: Text(l['intitule'] as String),
+                                ))
+                            .toList(),
+                        onChanged: _onLocaliteChanged,
+                      ),
+                      AppTextField(
+                        label: 'Code ANSADE',
+                        controller: _codeAnsadeController,
+                        required: true,
+                        prefixIcon: Icons.code,
+                        hint: 'Ex: 01-1-01-001',
+                      ),
+                      AppDropdownField<String>(
+                        label: 'Type d\'établissement',
+                        value: _etablissement,
+                        prefixIcon: Icons.business,
+                        items: _etablissements
+                            .map((e) => DropdownMenuItem(
+                                  value: e,
+                                  child: Text(e),
+                                ))
+                            .toList(),
+                        onChanged: (v) =>
+                            setState(() => _etablissement = v ?? _etablissement),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 32),
 
-                  // Boutons d'action
-                  Row(
+                  // ── B. Marché des travaux ────────────────────────────
+                  AppFormCard(
                     children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.save_outlined),
-                          label: const Text('Enregistrer'),
-                          onPressed: _saveFormulaire,
-                        ),
+                      AppSectionTitle(
+                        title: 'B. Marché des travaux',
+                        icon: Icons.description,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.send),
-                          label: const Text('Soumettre'),
-                          onPressed: _submitFormulaire,
-                        ),
+                      AppTextField(
+                        label: 'Intitulé du projet',
+                        controller: _intituleProjetController,
+                        required: true,
+                        prefixIcon: Icons.assignment,
+                      ),
+                      AppTextField(
+                        label: 'Marché des travaux',
+                        controller: _marcheTravauxController,
+                        prefixIcon: Icons.article,
+                      ),
+                      AppTextField(
+                        label: 'Numéro du marché',
+                        controller: _numeroMarcheController,
+                        prefixIcon: Icons.numbers,
+                      ),
+                      AppTextField(
+                        label: 'Nom de l\'entreprise',
+                        controller: _nomEntrepriseController,
+                        prefixIcon: Icons.business_center,
+                      ),
+                      AppNumberField(
+                        label: 'Délai du marché (jours)',
+                        controller: _delaiMarcheController,
+                        prefixIcon: Icons.timer_outlined,
                       ),
                     ],
+                  ),
+
+                  // ── C. Contrôle des travaux ──────────────────────────
+                  AppFormCard(
+                    children: [
+                      AppSectionTitle(
+                        title: 'C. Contrôle des travaux',
+                        icon: Icons.verified,
+                      ),
+                      AppTextField(
+                        label: 'Bureau de contrôle',
+                        controller: _bureauControleController,
+                        prefixIcon: Icons.account_balance,
+                      ),
+                      AppTextField(
+                        label: 'Nom du contrôleur',
+                        controller: _nomControleurController,
+                        prefixIcon: Icons.person,
+                      ),
+                    ],
+                  ),
+
+                  // ── D. Population ────────────────────────────────────
+                  AppFormCard(
+                    children: [
+                      AppSectionTitle(
+                        title: 'D. Population concernée',
+                        icon: Icons.people,
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: AppNumberField(
+                              label: 'Effectif',
+                              controller: _effectifController,
+                              prefixIcon: Icons.group,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: AppNumberField(
+                              label: 'Nb. potentiels',
+                              controller: _nbPotentielsController,
+                              prefixIcon: Icons.people_outline,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // ── Bouton ───────────────────────────────────────────
+                  AppSubmitButton(
+                    label: 'Enregistrer l\'identification',
+                    isLoading: _isLoading,
+                    onPressed: _save,
                   ),
                   const SizedBox(height: 24),
                 ],
               ),
             ),
-    );
-  }
-
-  Widget _buildInfoBanner(String text) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.colorBlue.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.colorBlue.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.info_outline, color: AppTheme.colorBlue, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(color: AppTheme.colorBlue, fontSize: 13),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-        fontWeight: FontWeight.bold,
-        color: AppTheme.colorBlue,
-      ),
-    );
-  }
-
-  Widget _buildDropdownField<T>({
-    required String label,
-    required T? value,
-    required List<DropdownMenuItem<T>> items,
-    required void Function(T?) onChanged,
-    required String hint,
-    bool enabled = true,
-  }) {
-    return DropdownButtonFormField<T>(
-      value: value,
-      items: items,
-      onChanged: enabled ? onChanged : null,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        filled: !enabled,
-        fillColor: enabled ? null : Colors.grey[100],
-      ),
-      isExpanded: true,
     );
   }
 }

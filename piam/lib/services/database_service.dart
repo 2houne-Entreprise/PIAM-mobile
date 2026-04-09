@@ -2,151 +2,28 @@ import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/reference_data.dart';
 
+/// Service principal d'accès à la base de données SQLite locale.
+///
+/// Utilise le pattern Singleton pour garantir une seule instance.
+/// Toutes les méthodes sont async et retournent des [Future].
 class DatabaseService {
-  // Variables en mémoire pour simuler la base de données sur le navigateur Web (Chrome)
-  static Map<String, dynamic>? _webMockParametre;
-  static final List<Map<String, dynamic>> _webMockQuestionnaires = [];
-
-  /// Initialise toutes les tables administratives depuis les données statiques
-  /// de la classe [ReferenceData] intégrées dans le code.
-  /// C'est la méthode recommandée car elle ne dépend d'aucun fichier externe.
-  Future<void> seedFromReferenceData() async {
-    final db = await database;
-
-    // Wilayas
-    for (final item in ReferenceData.wilayas) {
-      await db.insert('wilayas', {
-        'id': item['id'],
-        'nom': item['intitule_fr'] ?? item['intitule'],
-        'code': item['code']?.toString(),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-
-    // Moughataas
-    for (final item in ReferenceData.moughatas) {
-      await db.insert('moughataas', {
-        'id': item['id'],
-        'nom': item['intitule_fr'] ?? item['intitule'],
-        'wilaya_id': item['wilaya_id'],
-        'code': item['code']?.toString(),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-
-    // Communes
-    for (final item in ReferenceData.communes) {
-      await db.insert('communes', {
-        'id': item['id'],
-        'nom': item['intitule_fr'] ?? item['intitule'],
-        'moughataa_id': item['moughata_id'],
-        'code': item['code']?.toString(),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-
-    // Localités
-    for (final item in ReferenceData.localites) {
-      await db.insert('localites', {
-        'id': item['id'],
-        'nom': item['intitule_fr'] ?? item['intitule'],
-        'commune_id': item['commune_id'],
-        'moughataa_id': item['moughata_id'],
-        'wilaya_id': item['wilaya_id'],
-        'gps_lat': item['gps_lat'],
-        'gps_lng': item['gps_lng'],
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-  }
-
-  /// Initialise les wilayas à partir d'un JSON (liste d'objets).
-  Future<void> seedWilayas(String jsonData) async {
-    final db = await database;
-    final List<dynamic> data = json.decode(jsonData);
-    for (final item in data) {
-      await db.insert('wilayas', {
-        'id': item['id'],
-        'nom': item['nom'],
-        'code': item['code'],
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-  }
-
-  /// Initialise les moughataas à partir d'un JSON (liste d'objets).
-  Future<void> seedMoughataas(String jsonData) async {
-    final db = await database;
-    final List<dynamic> data = json.decode(jsonData);
-    for (final item in data) {
-      await db.insert('moughataas', {
-        'id': item['id'],
-        'nom': item['nom'],
-        'wilaya_id': item['wilaya_id'],
-        'code': item['code'],
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-  }
-
-  /// Initialise les communes à partir d'un JSON (liste d'objets).
-  Future<void> seedCommunes(String jsonData) async {
-    final db = await database;
-    final List<dynamic> data = json.decode(jsonData);
-    for (final item in data) {
-      await db.insert('communes', {
-        'id': item['id'],
-        'nom': item['nom'],
-        'moughataa_id': item['moughataa_id'],
-        'code': item['code'],
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-  }
-
-  /// Initialise les localités à partir d'un JSON (liste d'objets).
-  Future<void> seedLocalites(String jsonData) async {
-    final db = await database;
-    final List<dynamic> data = json.decode(jsonData);
-    for (final item in data) {
-      await db.insert('localites', {
-        'id': item['id'],
-        'nom': item['nom'],
-        'commune_id': item['commune_id'],
-        'gps_lat': item['latitude'],
-        'gps_lng': item['longitude'],
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
-    }
-  }
-
-  /// Obsolète, conservé pour compatibilité temporaire
-  Future<void> seedWilayasMoughataasCommunes(String jsonData) async {
-    // Si le JSON contient la clé 'wilayas', on utilise l'ancienne logique
-    // Sinon on suppose que c'est juste la liste des wilayas
-    final data = json.decode(jsonData);
-    if (data is Map && data.containsKey('wilayas')) {
-      final db = await database;
-      for (final wilaya in data['wilayas']) {
-        final wilayaId = await db.insert('wilayas', {
-          'nom': wilaya['nom_fr'] ?? wilaya['nom'],
-          'code': wilaya['code'],
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
-        // ... reste de l'ancienne logique si nécessaire ...
-      }
-    } else {
-      await seedWilayas(jsonData);
-    }
-  }
-
-  /// Helper statique pour charger le JSON depuis un asset Flutter (ex: assets/data/wilayas.json)
-  static Future<String> loadWilayasJsonFromAsset(String assetPath) async {
-    // Utilise rootBundle dans ton code Flutter pour charger le fichier
-    // Exemple d'appel : await DatabaseService.loadWilayasJsonFromAsset('assets/data/wilayas.json');
-    throw UnimplementedError(
-      'À implémenter dans le code Flutter avec rootBundle.loadString',
-    );
-  }
-
+  // ── Singleton ──────────────────────────────────────────────────────────────
   static final DatabaseService _instance = DatabaseService._internal();
   factory DatabaseService() => _instance;
   DatabaseService._internal();
 
   Database? _db;
+
+  // ── Persistance Web (Chrome) ──────────────────────────────────────────────
+  static const String _keyParametrage = 'piam_parametrage';
+  static const String _keyQuestionnaires = 'piam_questionnaires';
+
+  Future<SharedPreferences> get _prefs async => await SharedPreferences.getInstance();
+
+  // ── Initialisation de la base ──────────────────────────────────────────────
 
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -154,177 +31,254 @@ class DatabaseService {
     final path = join(dbPath, 'piam.db');
     _db = await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
-      onUpgrade: (db, oldVersion, newVersion) async {
-        // Migration : supprime et recrée les tables administratives
-        // afin d'intégrer les nouvelles données de ReferenceData
-        await db.execute('DROP TABLE IF EXISTS localites');
-        await db.execute('DROP TABLE IF EXISTS communes');
-        await db.execute('DROP TABLE IF EXISTS moughataas');
-        await db.execute('DROP TABLE IF EXISTS wilayas');
-        await db.execute('DROP TABLE IF EXISTS parametre_utilisateur');
-        await db.execute('DROP TABLE IF EXISTS questionnaires');
-        await _onCreate(db, newVersion);
-      },
+      onUpgrade: _onUpgrade,
     );
     return _db!;
   }
 
   Future<void> _onCreate(Database db, int version) async {
-    // --- Base administrative ---
-    await db.execute('''CREATE TABLE wilayas (
-      id INTEGER PRIMARY KEY,
-      nom TEXT NOT NULL,
-      code TEXT
-    )''');
-    await db.execute('''CREATE TABLE moughataas (
-      id INTEGER PRIMARY KEY,
-      nom TEXT NOT NULL,
-      wilaya_id INTEGER,
-      code TEXT,
-      FOREIGN KEY(wilaya_id) REFERENCES wilayas(id)
-    )''');
-    await db.execute('''CREATE TABLE communes (
-      id INTEGER PRIMARY KEY,
-      nom TEXT NOT NULL,
-      moughataa_id INTEGER,
-      code TEXT,
-      FOREIGN KEY(moughataa_id) REFERENCES moughataas(id)
-    )''');
-    await db.execute('''CREATE TABLE localites (
-      id INTEGER PRIMARY KEY,
-      nom TEXT NOT NULL,
-      commune_id INTEGER,
-      moughataa_id INTEGER,
-      wilaya_id INTEGER,
-      gps_lat REAL,
-      gps_lng REAL,
-      FOREIGN KEY(commune_id) REFERENCES communes(id),
-      FOREIGN KEY(moughataa_id) REFERENCES moughataas(id),
-      FOREIGN KEY(wilaya_id) REFERENCES wilayas(id)
-    )''');
-    // --- Base opérationnelle ---
-    await db.execute('''CREATE TABLE parametre_utilisateur (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      wilaya_id INTEGER,
-      moughataa_id INTEGER,
-      commune_id INTEGER,
-      localite_id INTEGER,
-      gps_lat REAL,
-      gps_lng REAL,
-      date TEXT
-    )''');
-    await db.execute('''CREATE TABLE questionnaires (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT NOT NULL,
-      data_json TEXT NOT NULL,
-      date TEXT,
-      user_id TEXT,
-      localite_id INTEGER,
-      sync_status TEXT DEFAULT 'local',
-      photo_path TEXT
-    )''');
+    // ── Tables administratives (géo) ────────────────────────────────────────
+    await db.execute('''
+      CREATE TABLE wilayas (
+        id INTEGER PRIMARY KEY,
+        nom TEXT NOT NULL,
+        code TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE moughataas (
+        id INTEGER PRIMARY KEY,
+        nom TEXT NOT NULL,
+        wilaya_id INTEGER,
+        code TEXT,
+        FOREIGN KEY(wilaya_id) REFERENCES wilayas(id)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE communes (
+        id INTEGER PRIMARY KEY,
+        nom TEXT NOT NULL,
+        moughataa_id INTEGER,
+        code TEXT,
+        FOREIGN KEY(moughataa_id) REFERENCES moughataas(id)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE localites (
+        id INTEGER PRIMARY KEY,
+        nom TEXT NOT NULL,
+        commune_id INTEGER,
+        moughataa_id INTEGER,
+        wilaya_id INTEGER,
+        gps_lat REAL,
+        gps_lng REAL,
+        FOREIGN KEY(commune_id) REFERENCES communes(id),
+        FOREIGN KEY(moughataa_id) REFERENCES moughataas(id),
+        FOREIGN KEY(wilaya_id) REFERENCES wilayas(id)
+      )
+    ''');
+
+    // ── Table de paramétrage utilisateur ────────────────────────────────────
+    await db.execute('''
+      CREATE TABLE parametre_utilisateur (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        wilaya_id INTEGER,
+        moughataa_id INTEGER,
+        commune_id INTEGER,
+        localite_id INTEGER,
+        gps_lat REAL,
+        gps_lng REAL,
+        date TEXT
+      )
+    ''');
+
+    // ── Table des questionnaires (formulaires) ───────────────────────────────
+    // IMPORTANT : data_json stocke du JSON valide (via jsonEncode, pas .toString())
+    // La contrainte UNIQUE(type, localite_id) permet le upsert (un seul enregistrement
+    // par formulaire et par localité).
+    await db.execute('''
+      CREATE TABLE questionnaires (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        data_json TEXT NOT NULL,
+        date_creation TEXT,
+        date_modification TEXT,
+        user_id TEXT,
+        localite_id INTEGER,
+        sync_status TEXT DEFAULT 'local',
+        photo_path TEXT,
+        UNIQUE(type, localite_id)
+      )
+    ''');
   }
 
-  // Méthodes principales
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    // Recrée toutes les tables proprement à chaque mise à jour de version
+    for (final table in [
+      'questionnaires',
+      'parametre_utilisateur',
+      'localites',
+      'communes',
+      'moughataas',
+      'wilayas',
+    ]) {
+      await db.execute('DROP TABLE IF EXISTS $table');
+    }
+    await _onCreate(db, newVersion);
+  }
+
+  // ── Seed des données de référence ─────────────────────────────────────────
+
+  /// Peuple les tables administratives depuis les données statiques de [ReferenceData].
+  Future<void> seedFromReferenceData() async {
+    final db = await database;
+
+    for (final item in ReferenceData.wilayas) {
+      await db.insert(
+        'wilayas',
+        {
+          'id': item['id'],
+          'nom': item['intitule_fr'] ?? item['intitule'],
+          'code': item['code']?.toString(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+
+    for (final item in ReferenceData.moughatas) {
+      await db.insert(
+        'moughataas',
+        {
+          'id': item['id'],
+          'nom': item['intitule_fr'] ?? item['intitule'],
+          'wilaya_id': item['wilaya_id'],
+          'code': item['code']?.toString(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+
+    for (final item in ReferenceData.communes) {
+      await db.insert(
+        'communes',
+        {
+          'id': item['id'],
+          'nom': item['intitule_fr'] ?? item['intitule'],
+          'moughataa_id': item['moughata_id'],
+          'code': item['code']?.toString(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+
+    for (final item in ReferenceData.localites) {
+      await db.insert(
+        'localites',
+        {
+          'id': item['id'],
+          'nom': item['intitule_fr'] ?? item['intitule'],
+          'commune_id': item['commune_id'],
+          'moughataa_id': item['moughata_id'],
+          'wilaya_id': item['wilaya_id'],
+          'gps_lat': item['gps_lat'],
+          'gps_lng': item['gps_lng'],
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  // ── Géo (lecture) ─────────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getWilayas() async {
+    final db = await database;
+    return db.query('wilayas', orderBy: 'nom');
+  }
+
+  Future<List<Map<String, dynamic>>> getMoughataas(int wilayaId) async {
+    final db = await database;
+    return db.query(
+      'moughataas',
+      where: 'wilaya_id = ?',
+      whereArgs: [wilayaId],
+      orderBy: 'nom',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getCommunes(int moughataaId) async {
+    final db = await database;
+    return db.query(
+      'communes',
+      where: 'moughataa_id = ?',
+      whereArgs: [moughataaId],
+      orderBy: 'nom',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getLocalites(int communeId) async {
+    final db = await database;
+    return db.query(
+      'localites',
+      where: 'commune_id = ?',
+      whereArgs: [communeId],
+      orderBy: 'nom',
+    );
+  }
+
+  // ── Géo (écriture) ────────────────────────────────────────────────────────
+
   Future<int> insertWilaya(Map<String, dynamic> data) async {
     final db = await database;
-    return await db.insert(
-      'wilayas',
-      data,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return db.insert('wilayas', data,
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<int> insertMoughataa(Map<String, dynamic> data) async {
     final db = await database;
-    return await db.insert(
-      'moughataas',
-      data,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return db.insert('moughataas', data,
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<int> insertCommune(Map<String, dynamic> data) async {
     final db = await database;
-    return await db.insert(
-      'communes',
-      data,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return db.insert('communes', data,
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<int> insertLocalite(Map<String, dynamic> data) async {
     final db = await database;
-    return await db.insert(
-      'localites',
-      data,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return db.insert('localites', data,
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
+
+  // ── Paramétrage utilisateur ───────────────────────────────────────────────
 
   Future<int> insertParametreUtilisateur(Map<String, dynamic> data) async {
     if (kIsWeb) {
-      _webMockParametre = Map<String, dynamic>.from(data);
+      final p = await _prefs;
+      await p.setString(_keyParametrage, jsonEncode(data));
       return 1;
     }
     final db = await database;
-    return await db.insert(
+    return db.insert(
       'parametre_utilisateur',
       data,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
-  Future<int> insertQuestionnaire(Map<String, dynamic> data) async {
-    if (kIsWeb) {
-      _webMockQuestionnaires.add(Map<String, dynamic>.from(data));
-      return _webMockQuestionnaires.length;
-    }
-    final db = await database;
-    return await db.insert(
-      'questionnaires',
-      data,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  Future<List<Map<String, dynamic>>> getWilayas() async {
-    final db = await database;
-    return await db.query('wilayas');
-  }
-
-  Future<List<Map<String, dynamic>>> getMoughataas(int wilayaId) async {
-    final db = await database;
-    return await db.query(
-      'moughataas',
-      where: 'wilaya_id = ?',
-      whereArgs: [wilayaId],
-    );
-  }
-
-  Future<List<Map<String, dynamic>>> getCommunes(int moughataaId) async {
-    final db = await database;
-    return await db.query(
-      'communes',
-      where: 'moughataa_id = ?',
-      whereArgs: [moughataaId],
-    );
-  }
-
-  Future<List<Map<String, dynamic>>> getLocalites(int communeId) async {
-    final db = await database;
-    return await db.query(
-      'localites',
-      where: 'commune_id = ?',
-      whereArgs: [communeId],
-    );
-  }
-
   Future<Map<String, dynamic>?> getParametreUtilisateur() async {
     if (kIsWeb) {
-      return _webMockParametre;
+      final p = await _prefs;
+      final jsonStr = p.getString(_keyParametrage);
+      if (jsonStr == null) return null;
+      try {
+        return jsonDecode(jsonStr) as Map<String, dynamic>;
+      } catch (_) {
+        return null;
+      }
     }
     final db = await database;
     final res = await db.query(
@@ -332,27 +286,222 @@ class DatabaseService {
       orderBy: 'id DESC',
       limit: 1,
     );
-    if (res.isNotEmpty) return res.first;
-    return null;
+    return res.isNotEmpty ? res.first : null;
   }
 
+  // ── Questionnaires / Formulaires ──────────────────────────────────────────
+
+  /// Insère un nouveau questionnaire.
+  ///
+  /// ⚠️ Utilisez [upsertQuestionnaire] de préférence pour éviter les doublons.
+  Future<int> insertQuestionnaire(Map<String, dynamic> data) async {
+    if (kIsWeb) {
+      final p = await _prefs;
+      final existingStr = p.getString(_keyQuestionnaires) ?? '[]';
+      final List<dynamic> list = jsonDecode(existingStr);
+      list.add(data);
+      await p.setString(_keyQuestionnaires, jsonEncode(list));
+      return list.length;
+    }
+    final db = await database;
+    // S'assurer que data_json est bien du JSON valide
+    final safeData = _ensureJsonEncoded(data);
+    return db.insert(
+      'questionnaires',
+      safeData,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Sauvegarde (insère ou met à jour) un formulaire identifié par son [type]
+  /// et sa [localiteId].
+  ///
+  /// C'est la méthode RECOMMANDÉE pour sauvegarder les formulaires.
+  /// Elle garantit qu'il n'y a qu'une seule entrée par (type, localité).
+  ///
+  /// [type]      : ex. 'dernier_suivi_localite', 'etat_lieux_localite', etc.
+  /// [localiteId]: l'id de la localité concernée
+  /// [dataMap]   : Map<String, dynamic> des données du formulaire
+  /// [userId]    : optionnel, identifiant de l'utilisateur
+  Future<void> upsertQuestionnaire({
+    required String type,
+    required int? localiteId,
+    required Map<String, dynamic> dataMap,
+    dynamic userId,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    final dataJson = jsonEncode(dataMap); // ✅ Vrai JSON, pas .toString()
+
+    if (kIsWeb) {
+      final p = await _prefs;
+      final existingStr = p.getString(_keyQuestionnaires) ?? '[]';
+      final List<dynamic> list = jsonDecode(existingStr);
+      
+      final idx = list.indexWhere(
+        (q) => q['type'] == type && q['localite_id'] == localiteId,
+      );
+      final entry = {
+        'type': type,
+        'data_json': dataJson,
+        'date_modification': now,
+        'date_creation': now,
+        'user_id': userId?.toString(),
+        'localite_id': localiteId,
+        'sync_status': 'local',
+      };
+      if (idx >= 0) {
+        list[idx] = entry;
+      } else {
+        list.add(entry);
+      }
+      await p.setString(_keyQuestionnaires, jsonEncode(list));
+      return;
+    }
+
+    final db = await database;
+
+    // Vérifie si un enregistrement existe déjà
+    final String whereClause = localiteId == null 
+        ? 'type = ? AND localite_id IS NULL' 
+        : 'type = ? AND localite_id = ?';
+    final List<dynamic> whereArgs = [type];
+    if (localiteId != null) whereArgs.add(localiteId);
+
+    final existing = await db.query(
+      'questionnaires',
+      where: whereClause,
+      whereArgs: whereArgs,
+      limit: 1,
+    );
+
+    if (existing.isNotEmpty) {
+      // Mise à jour
+      await db.update(
+        'questionnaires',
+        {
+          'data_json': dataJson,
+          'date_modification': now,
+          'user_id': userId?.toString(),
+          'sync_status': 'local',
+        },
+        where: whereClause,
+        whereArgs: whereArgs,
+      );
+    } else {
+      // Insertion
+      await db.insert('questionnaires', {
+        'type': type,
+        'data_json': dataJson,
+        'date_creation': now,
+        'date_modification': now,
+        'user_id': userId?.toString(),
+        'localite_id': localiteId,
+        'sync_status': 'local',
+      });
+    }
+  }
+
+  /// Charge les données d'un formulaire depuis la base de données.
+  ///
+  /// Retourne la [Map] des données du formulaire, ou `null` si aucune
+  /// donnée n'a été enregistrée pour ce couple (type, localité).
+  ///
+  /// [type]      : ex. 'dernier_suivi_localite'
+  /// [localiteId]: l'id de la localité
+  Future<Map<String, dynamic>?> getQuestionnaire({
+    required String type,
+    required int? localiteId,
+  }) async {
+    if (localiteId == null) return null;
+
+    if (kIsWeb) {
+      final p = await _prefs;
+      final existingStr = p.getString(_keyQuestionnaires) ?? '[]';
+      final List<dynamic> list = jsonDecode(existingStr);
+      
+      final match = list.where(
+        (q) => q['type'] == type && q['localite_id'] == localiteId,
+      );
+      if (match.isEmpty) return null;
+      final q = match.first as Map<String, dynamic>;
+      final dataJson = q['data_json'] as String?;
+      if (dataJson == null || dataJson.isEmpty) return null;
+      try {
+        return jsonDecode(dataJson) as Map<String, dynamic>;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final db = await database;
+    final String whereClause = localiteId == null 
+        ? 'type = ? AND localite_id IS NULL' 
+        : 'type = ? AND localite_id = ?';
+    final List<dynamic> whereArgs = [type];
+    if (localiteId != null) whereArgs.add(localiteId);
+
+    final res = await db.query(
+      'questionnaires',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'date_modification DESC',
+      limit: 1,
+    );
+
+    if (res.isEmpty) return null;
+
+    final dataJson = res.first['data_json'] as String?;
+    if (dataJson == null || dataJson.isEmpty) return null;
+
+    try {
+      return jsonDecode(dataJson) as Map<String, dynamic>;
+    } catch (e) {
+      // Le JSON est invalide (ancien format .toString()) — on ignore
+      return null;
+    }
+  }
+
+  /// Retourne tous les questionnaires, avec filtre optionnel sur le statut sync.
   Future<List<Map<String, dynamic>>> getQuestionnaires({
     String? syncStatus,
+    String? type,
   }) async {
-    final db = await database;
-    if (syncStatus != null) {
-      return await db.query(
-        'questionnaires',
-        where: 'sync_status = ?',
-        whereArgs: [syncStatus],
-      );
+    if (kIsWeb) {
+      final p = await _prefs;
+      final existingStr = p.getString(_keyQuestionnaires) ?? '[]';
+      final List<dynamic> list = jsonDecode(existingStr);
+      return list.map((e) => e as Map<String, dynamic>).where((q) {
+        final matchStatus =
+            syncStatus == null || q['sync_status'] == syncStatus;
+        final matchType = type == null || q['type'] == type;
+        return matchStatus && matchType;
+      }).toList();
     }
-    return await db.query('questionnaires');
+    final db = await database;
+
+    final conditions = <String>[];
+    final args = <dynamic>[];
+    if (syncStatus != null) {
+      conditions.add('sync_status = ?');
+      args.add(syncStatus);
+    }
+    if (type != null) {
+      conditions.add('type = ?');
+      args.add(type);
+    }
+    final where = conditions.isEmpty ? null : conditions.join(' AND ');
+
+    return db.query(
+      'questionnaires',
+      where: where,
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'date_modification DESC',
+    );
   }
 
   Future<int> updateQuestionnaireSyncStatus(int id, String status) async {
     final db = await database;
-    return await db.update(
+    return db.update(
       'questionnaires',
       {'sync_status': status},
       where: 'id = ?',
@@ -360,24 +509,111 @@ class DatabaseService {
     );
   }
 
+  // ── Utilitaires ───────────────────────────────────────────────────────────
+
   Future<void> clearAll() async {
+    if (kIsWeb) {
+      final p = await _prefs;
+      await p.remove(_keyParametrage);
+      await p.remove(_keyQuestionnaires);
+      return;
+    }
     final db = await database;
     await db.delete('parametre_utilisateur');
     await db.delete('questionnaires');
   }
 
+  /// S'assure que le champ [data_json] d'une map est une chaîne JSON valide.
+  /// Corrige le bug où .toString() était utilisé à la place de jsonEncode().
+  Map<String, dynamic> _ensureJsonEncoded(Map<String, dynamic> data) {
+    final result = Map<String, dynamic>.from(data);
+    if (result.containsKey('data_json') && result['data_json'] is Map) {
+      result['data_json'] = jsonEncode(result['data_json']);
+    }
+    return result;
+  }
+
+  // ── Méthodes conservées pour compatibilité ────────────────────────────────
+
   Future<Object?> getInfrastructures(
     int localiteId, {
     List<String>? infrastructureTypes,
-  }) async {
-    return null;
-  }
+  }) async => null;
 
-  Future<Object?> insert(String s, Map<String, String> projectData) async {
-    return null;
-  }
+  Future<Object?> insert(String s, Map<String, dynamic> projectData) async =>
+      null;
 
   Future<void> setCurrentProjectId(Object? projectId) async {}
 
   Future<Object?> query(String s) async {}
+
+  // ── Seed (méthodes JSON) ──────────────────────────────────────────────────
+
+  Future<void> seedWilayas(String jsonData) async {
+    final db = await database;
+    final List<dynamic> data = json.decode(jsonData);
+    for (final item in data) {
+      await db.insert(
+        'wilayas',
+        {
+          'id': item['id'],
+          'nom': item['nom'],
+          'code': item['code'],
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  Future<void> seedMoughataas(String jsonData) async {
+    final db = await database;
+    final List<dynamic> data = json.decode(jsonData);
+    for (final item in data) {
+      await db.insert(
+        'moughataas',
+        {
+          'id': item['id'],
+          'nom': item['nom'],
+          'wilaya_id': item['wilaya_id'],
+          'code': item['code'],
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  Future<void> seedCommunes(String jsonData) async {
+    final db = await database;
+    final List<dynamic> data = json.decode(jsonData);
+    for (final item in data) {
+      await db.insert(
+        'communes',
+        {
+          'id': item['id'],
+          'nom': item['nom'],
+          'moughataa_id': item['moughataa_id'],
+          'code': item['code'],
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  Future<void> seedLocalites(String jsonData) async {
+    final db = await database;
+    final List<dynamic> data = json.decode(jsonData);
+    for (final item in data) {
+      await db.insert(
+        'localites',
+        {
+          'id': item['id'],
+          'nom': item['nom'],
+          'commune_id': item['commune_id'],
+          'gps_lat': item['latitude'],
+          'gps_lng': item['longitude'],
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:piam/services/database_service.dart';
 import 'package:piam/data/reference_data.dart';
+import 'package:piam/config/app_theme.dart';
+import 'package:piam/presentation/widgets/app_form_fields.dart';
 
 class FormHeaderWidget extends StatefulWidget {
   final Function(int? localiteId, dynamic userId) onDataLoaded;
@@ -89,31 +91,43 @@ class _FormHeaderWidgetState extends State<FormHeaderWidget> {
       );
     }
 
+    if (_localisationInfo != null && _localisationInfo!.startsWith('⚠️')) {
+      return AppInfoBanner(
+        message: _localisationInfo!.replaceAll('⚠️ ', ''),
+        color: AppTheme.errorColor,
+        icon: Icons.warning_amber_rounded,
+      );
+    }
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 24),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blue.shade50,
+        color: AppTheme.primaryColor.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue.shade200),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'DONNÉES DU PARAMÉTRAGE',
+            'LOCALISATION SÉLECTIONNÉE',
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: FontWeight.bold,
-              color: Colors.blue.shade800,
-              letterSpacing: 1.2,
+              color: AppTheme.primaryColor,
+              letterSpacing: 1.1,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
             _localisationInfo ?? '',
-            style: const TextStyle(fontSize: 14, height: 1.5),
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.5,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),

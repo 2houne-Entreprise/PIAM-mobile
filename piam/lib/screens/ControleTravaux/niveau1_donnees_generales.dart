@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/database_service.dart';
 import 'niveau2_organisation_chantier.dart';
+import '../../data/reference_data.dart';
 
 class Niveau1DonneesGenerales extends StatefulWidget {
   static const String routeName = '/niveau1';
@@ -98,11 +99,7 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
 
   String get _codeANSADE => _localiteCodeAnsade[_localite] ?? '-';
 
-  @override
-  void initState() {
-    super.initState();
-    _initializeForm();
-  }
+  // (supprimé doublon)
 
   Future<void> _initializeForm() async {
     await _loadWilayas();
@@ -138,65 +135,43 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
     });
   }
 
-  Future<void> _loadMoughataas(String wilaya) async {
-    final wilayaId = _wilayaIds[wilaya];
-    if (wilayaId == null) return;
-
-    final rows = await _dbService.getMoughataas(wilayaId);
-    if (!mounted) return;
-
-    setState(() {
-      _moughataaIds
-        ..clear()
-        ..addEntries(
-          rows.map((row) {
-            final name = (row['intitule_fr']?.toString().isNotEmpty ?? false)
-                ? row['intitule_fr'].toString()
-                : row['intitule'].toString();
-            return MapEntry(name, (row['id'] as int?) ?? 0);
-          }),
-        );
-      _moughataas = _moughataaIds.keys.toList();
-      _moughataa = null;
-      _commune = null;
-      _localite = null;
-      _communes = [];
-      _localites = [];
-      _sitesInfrastructure = [];
-      _siteSelectionne = null;
-      _siteLabelsToName.clear();
-      _localiteCodeAnsade.clear();
-    });
+  String? _getWilayaName(dynamic id) {
+    if (id == null) return '-';
+    final entry = ReferenceData.wilayas.firstWhere(
+      (w) => w['id'].toString() == id.toString(),
+      orElse: () => {},
+    );
+    return entry['intitule_fr'] ?? entry['intitule'] ?? '-';
   }
 
-  Future<void> _loadCommunes(String moughataa) async {
-    final moughataaId = _moughataaIds[moughataa];
-    if (moughataaId == null) return;
-
-    final rows = await _dbService.getCommunes(moughataaId);
-    if (!mounted) return;
-
-    setState(() {
-      _communeIds
-        ..clear()
-        ..addEntries(
-          rows.map((row) {
-            final name = (row['intitule_fr']?.toString().isNotEmpty ?? false)
-                ? row['intitule_fr'].toString()
-                : row['intitule'].toString();
-            return MapEntry(name, (row['id'] as int?) ?? 0);
-          }),
-        );
-      _communes = _communeIds.keys.toList();
-      _commune = null;
-      _localite = null;
-      _localites = [];
-      _sitesInfrastructure = [];
-      _siteSelectionne = null;
-      _siteLabelsToName.clear();
-      _localiteCodeAnsade.clear();
-    });
+  String? _getMoughataaName(dynamic id) {
+    if (id == null) return '-';
+    final entry = ReferenceData.moughatas.firstWhere(
+      (m) => m['id'].toString() == id.toString(),
+      orElse: () => {},
+    );
+    return entry['intitule_fr'] ?? entry['intitule'] ?? '-';
   }
+
+  String? _getCommuneName(dynamic id) {
+    if (id == null) return '-';
+    final entry = ReferenceData.communes.firstWhere(
+      (c) => c['id'].toString() == id.toString(),
+      orElse: () => {},
+    );
+    return entry['intitule_fr'] ?? entry['intitule'] ?? '-';
+  }
+
+  String? _getLocaliteName(dynamic id) {
+    if (id == null) return '-';
+    final entry = ReferenceData.localites.firstWhere(
+      (l) => l['id'].toString() == id.toString(),
+      orElse: () => {},
+    );
+    return entry['intitule_fr'] ?? entry['intitule'] ?? '-';
+  }
+
+  // Duplicate build method and misplaced code removed. Only one build method remains.
 
   Future<void> _loadLocalites(String commune) async {
     final communeId = _communeIds[commune];
@@ -345,6 +320,20 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
     super.dispose();
   }
 
+  Map<String, dynamic>? _paramInit;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeForm();
+    _loadParametrageInitial();
+  }
+
+  Future<void> _loadParametrageInitial() async {
+    final param = await _dbService.getParametreUtilisateur();
+    if (mounted) setState(() => _paramInit = param);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -356,92 +345,39 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
           child: ListView(
             children: [
               const Text(
-                'A. Données administratives',
+                'A. Localisation (Paramétrage initial)',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 8),
-              if (_isGeoLoading)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 12),
-                  child: LinearProgressIndicator(),
-                ),
-              if (!_isGeoLoading && _wilayas.isEmpty)
+              if (_paramInit == null)
+                const Center(child: CircularProgressIndicator()),
+              if (_paramInit != null)
                 Card(
-                  color: Colors.orange.shade50,
+                  color: Colors.blue.shade50,
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Aucune donnée géographique chargée.',
-                          style: TextStyle(fontWeight: FontWeight.w700),
+                        Text(
+                          'Wilaya :   9${_paramInit?['wilaya_nom'] ?? _paramInit?['wilaya_id'] ?? '-'}',
                         ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Touchez "Réessayer" pour recharger la base de référence (Wilaya/Moughataa/Commune/Localité).',
+                        Text(
+                          'Moughataa :   9${_paramInit?['moughataa_nom'] ?? _paramInit?['moughataa_id'] ?? '-'}',
                         ),
-                        const SizedBox(height: 8),
-                        ElevatedButton.icon(
-                          onPressed: _loadWilayas,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Réessayer'),
+                        Text(
+                          'Commune :   9${_paramInit?['commune_nom'] ?? _paramInit?['commune_id'] ?? '-'}',
+                        ),
+                        Text(
+                          'Localité :   9${_paramInit?['localite_nom'] ?? _paramInit?['localite_id'] ?? '-'}',
+                        ),
+                        Text(
+                          'GPS :   9${_paramInit?['gps_lat'] ?? '-'}, ${_paramInit?['gps_lng'] ?? '-'}',
                         ),
                       ],
                     ),
                   ),
                 ),
-              _buildDropdown('Wilaya', _wilaya, _wilayas, (val) {
-                setState(() {
-                  _wilaya = val;
-                });
-                if (val != null) {
-                  _loadMoughataas(val);
-                }
-              }),
-              const SizedBox(height: 8),
-              _buildDropdown('Moughataa', _moughataa, _moughataas, (val) {
-                setState(() {
-                  _moughataa = val;
-                });
-                if (val != null) {
-                  _loadCommunes(val);
-                }
-              }),
-              const SizedBox(height: 8),
-              _buildDropdown('Commune', _commune, _communes, (val) {
-                setState(() {
-                  _commune = val;
-                });
-                if (val != null) {
-                  _loadLocalites(val);
-                }
-              }),
-              const SizedBox(height: 8),
-              _buildDropdown('Localité', _localite, _localites, (val) {
-                setState(() {
-                  _localite = val;
-                });
-                if (val != null) {
-                  _loadSitesInfrastructure(val);
-                }
-              }),
-              if (_commune != null && _localites.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(top: 4),
-                  child: Text(
-                    'Aucune localité trouvée pour cette commune dans le fichier ANSADE.',
-                    style: TextStyle(color: Colors.orange),
-                  ),
-                ),
-              const SizedBox(height: 8),
-              TextFormField(
-                decoration: InputDecoration(
-                  labelText: 'Code ANSADE (auto)',
-                  suffixText: _codeANSADE,
-                ),
-                enabled: false,
-              ),
               const SizedBox(height: 16),
               _buildDropdown(
                 'Etablissement public',

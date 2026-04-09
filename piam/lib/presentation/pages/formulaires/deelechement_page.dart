@@ -1,37 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:piam/config/app_strings.dart';
 import 'package:piam/config/app_theme.dart';
-import 'package:piam/services/database_service.dart';
-import 'package:piam/data/reference_data.dart';
+import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
+import 'package:piam/services/database_service.dart';
 
-/// Formulaire de Déclenchement (Simplifié)
+/// Formulaire — Déclenchement
+///
+/// Un seul champ : la date de l'activité.
+/// Pattern de persistance identique aux autres formulaires.
 class DeeclenchementPage extends StatefulWidget {
   final String formulaireId;
 
   const DeeclenchementPage({Key? key, required this.formulaireId})
-    : super(key: key);
+      : super(key: key);
 
   @override
   State<DeeclenchementPage> createState() => _DeeclenchementPageState();
 }
 
 class _DeeclenchementPageState extends State<DeeclenchementPage> {
-  String? _localisationInfo;
-  late final GlobalKey<FormState> _formKey;
-  late final TextEditingController _dateController;
+  // ── État ─────────────────────────────────────────────────────────────────
+  final _formKey = GlobalKey<FormState>();
+  final _dateController = TextEditingController();
 
   bool _isLoading = false;
-  DateTime? _selectedDate;
+  bool _isSaved = false;
+
+  // Données de localisation (fournies par FormHeaderWidget)
   int? _localiteId;
   dynamic _userId;
 
-  @override
-  void initState() {
-    super.initState();
-    _formKey = GlobalKey<FormState>();
-    _dateController = TextEditingController();
-  }
+  // ── Cycle de vie ──────────────────────────────────────────────────────────
 
   @override
   void dispose() {
@@ -39,193 +39,159 @@ class _DeeclenchementPageState extends State<DeeclenchementPage> {
     super.dispose();
   }
 
-  Future<void> _selectDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null) {
-      setState(() {
-        _selectedDate = picked;
-        _dateController.text = '${picked.day}/${picked.month}/${picked.year}';
-      });
-    }
+  // ── Chargement ────────────────────────────────────────────────────────────
+
+  /// Appelé par [FormHeaderWidget] dès que la localité est connue.
+  void _onLocalisationLoaded(int? localiteId, dynamic userId) {
+    setState(() {
+      _localiteId = localiteId;
+      _userId = userId;
+    });
+    if (localiteId != null) _loadSavedData(localiteId);
   }
 
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+  Future<void> _loadSavedData(int localiteId) async {
+    final data = await DatabaseService().getQuestionnaire(
+      type: 'declenchement',
+      localiteId: localiteId,
+    );
 
-    setState(() {
-      _isLoading = true;
-    });
+    if (data == null || !mounted) return;
+
+    _dateController.text = data['date_activite'] ?? '';
+    if (mounted) setState(() => _isSaved = true);
+  }
+
+  // ── Enregistrement ────────────────────────────────────────────────────────
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
 
     try {
-      final db = DatabaseService();
-      // On n'a plus besoin du DB lookup içi car le FormHeaderWidget 
-      // a déjà chargé et passé les variables (_userId, _localiteId).
-      
-      final data = {
-        'type': 'declenchement',
-        'data_json': {
-          'date_activite': _dateController.text,
-          // on ne sauvegarde que l'essentiel
-        }.toString(),
-        'date': DateTime.now().toIso8601String(),
-        'user_id': _userId,
-        'localite_id': _localiteId,
-      };
-      
-      await db.insertQuestionnaire(data);
-      await Future.delayed(const Duration(milliseconds: 600)); // feedback visuel
-      
+      await DatabaseService().upsertQuestionnaire(
+        type: 'declenchement',
+        localiteId: _localiteId,
+        dataMap: {'date_activite': _dateController.text},
+        userId: _userId,
+      );
+
       if (mounted) {
+        setState(() => _isSaved = true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Déclenchement enregistré avec succès'),
-            backgroundColor: Color.fromARGB(255, 16, 185, 129),
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Déclenchement enregistré avec succès'),
+              ],
+            ),
+            backgroundColor: AppTheme.successColor,
+            duration: Duration(seconds: 3),
           ),
         );
-        Navigator.pop(context); // Retour automatique au Dashboard !
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Text('Erreur : $e'),
+            backgroundColor: AppTheme.errorColor,
           ),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  // ── Interface ─────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         title: const Text(AppStrings.declenchementTitle),
         elevation: 0,
+        actions: [
+          if (_isSaved)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: AppStatusBadge(
+                label: 'Enregistré',
+                color: AppTheme.successColor,
+                icon: Icons.check_circle_outline,
+              ),
+            ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Bloc d'En-tête Partagé (Localisation)
-              FormHeaderWidget(
-                onDataLoaded: (localiteId, userId) {
-                  setState(() {
-                    _localiteId = localiteId;
-                    _userId = userId;
-                  });
-                },
-              ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // ── Localisation ─────────────────────────────────────────────
+            FormHeaderWidget(onDataLoaded: _onLocalisationLoaded),
 
-              // Titre de section "Saisie de l'information"
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
-                  borderRadius: BorderRadius.circular(4),
-                  border: const Border(left: BorderSide(color: AppTheme.primaryColor, width: 4)),
+            // ── Date ─────────────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(
+                  title: AppStrings.declenchementTitle,
+                  icon: Icons.flag_outlined,
+                  color: AppTheme.primaryColor,
                 ),
-                child: const Text(
-                  'SAISIE DU DÉCLENCHEMENT',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                AppInfoBanner(
+                  message:
+                      'Saisissez la date à laquelle le déclenchement a eu lieu dans cette localité.',
+                  icon: Icons.lightbulb_outline,
                 ),
-              ),
+                AppDateField(
+                  label: 'Date de l\'activité',
+                  controller: _dateController,
+                  required: true,
+                  lastDate: DateTime.now(),
+                ),
+              ],
+            ),
 
-              // Champ Date d'activité (Unique interaction)
-              Text(
-                'Date de l\'activité *',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _dateController,
-                readOnly: true,
-                onTap: _selectDate,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return AppStrings.requiredField;
-                  }
-                  if (_selectedDate != null && _selectedDate!.isAfter(DateTime.now())) {
-                    return AppStrings.invalidDate;
-                  }
-                  return null;
-                },
-                decoration: InputDecoration(
-                  hintText: 'Sélectionnez la date',
-                  prefixIcon: const Icon(Icons.calendar_today),
-                  suffixIcon: _dateController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            setState(() {
-                              _dateController.clear();
-                              _selectedDate = null;
-                            });
-                          },
-                        )
-                      : null,
-                ),
-              ),
-              
-              const SizedBox(height: 48),
+            const SizedBox(height: 16),
 
-              // Boutons d'action
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _isLoading ? null : () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+            // ── Boutons ───────────────────────────────────────────────────
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isLoading
+                        ? null
+                        : () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Text(AppStrings.cancel),
                     ),
+                    child: const Text(AppStrings.cancel),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _submit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.colorGreen,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Text(
-                              AppStrings.send,
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                    ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: AppSubmitButton(
+                    label: AppStrings.send,
+                    isLoading: _isLoading,
+                    onPressed: _save,
+                    color: AppTheme.colorGreen,
+                    icon: Icons.save_rounded,
                   ),
-                ],
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+          ],
         ),
       ),
     );

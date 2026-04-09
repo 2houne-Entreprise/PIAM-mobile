@@ -1,338 +1,427 @@
 import 'package:flutter/material.dart';
+import 'package:piam/config/app_theme.dart';
+import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
 
+/// Formulaire — Dernier Suivi Localité
+///
+/// Ce formulaire suit le pattern recommandé pour tous les formulaires PIAM :
+///   1. [initState] → n'initialise que les controllers
+///   2. [_onLocalisationLoaded] → appelé par [FormHeaderWidget] quand la
+///      localité est connue → charge les données depuis SQLite
+///   3. [_save] → valide + sauvegarde via [DatabaseService.upsertQuestionnaire]
+///   4. Les données persistent : quitter et revenir affiche les dernières valeurs
 class DernierSuiviLocalitePage extends StatefulWidget {
   final String formulaireId;
+
   const DernierSuiviLocalitePage({Key? key, required this.formulaireId})
-    : super(key: key);
+      : super(key: key);
 
   @override
   State<DernierSuiviLocalitePage> createState() =>
       _DernierSuiviLocalitePageState();
 }
 
-class _DernierSuiviLocalitePageState extends State<DernierSuiviLocalitePage> {
+class _DernierSuiviLocalitePageState
+    extends State<DernierSuiviLocalitePage> {
+  // ── Clés et état ─────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _isSaved = false; // true après un enregistrement réussi
 
+  // Données de localisation (renseignées par FormHeaderWidget)
   int? _localiteId;
   dynamic _userId;
-  DateTime? _dateActivite;
+
+  // ── Controllers (un par champ de saisie) ─────────────────────────────────
+
+  // Date
+  final _dateController = TextEditingController();
 
   // Données générales
-  int? _nbMenagesEnquetes;
-  int? _nbTotalLatrines;
-  int? _nbLatrinesAmeliorees;
-  int? _nbLatrinesNonAmeliorees;
+  final _nbMenagesEnquetesController = TextEditingController();
+  final _nbTotalLatrinesController = TextEditingController();
+  final _nbLatrinesAmelioreesCtr = TextEditingController();
+  final _nbLatrinesNonAmelioreesCtr = TextEditingController();
 
   // Gestion
-  int? _nbLatrinesAmelioreesHygienique;
-  int? _nbLatrinesAmelioreesPartagees;
-  int? _nbLatrinesNonFonctionnelles;
+  final _nbLatrinesAmelioreesHygieniqueCtr = TextEditingController();
+  final _nbLatrinesAmelioreesParageesCtr = TextEditingController();
+  final _nbLatrinesNonFonctionellesCtr = TextEditingController();
 
   // État
-  int? _nbLatrinesEndommagees;
-  int? _nbMenagesUtilisantVoisin;
-  int? _nbMenagesDAL;
+  final _nbLatrinesEndommaggersCtr = TextEditingController();
+  final _nbMenagesUtilisantVoisinCtr = TextEditingController();
+  final _nbMenagesDALCtr = TextEditingController();
 
   // Réalisations
-  int? _nbNouvellesLatrinesConstruites;
-  int? _nbLatrinesAutofinancees;
-  int? _nbLatrinesAideExterieure;
-  int? _nbLatrinesFinanceesCommunaute;
+  final _nbNouvellesLatrinesCtr = TextEditingController();
+  final _nbLatrinesAutofinanceesCtr = TextEditingController();
+  final _nbLatrinesAideExterieureCtr = TextEditingController();
+  final _nbLatrinesFinanceesCommunauteCtr = TextEditingController();
 
   // Investissement
-  double? _montantInvestiMenages;
+  final _montantInvestiMenagesCtr = TextEditingController();
 
   // DLM
-  int? _nbLatrinesDLM;
-  int? _nbDlmEauSavon;
-  int? _nbDlmEauSansSavon;
-  int? _nbMenagesSansDLM;
+  final _nbLatrinesDLMCtr = TextEditingController();
+  final _nbDlmEauSavonCtr = TextEditingController();
+  final _nbDlmEauSansSavonCtr = TextEditingController();
+  final _nbMenagesSansDLMCtr = TextEditingController();
+
+  // ── Cycle de vie ──────────────────────────────────────────────────────────
 
   @override
   void dispose() {
+    // Libérer tous les controllers pour éviter les fuites mémoire
+    _dateController.dispose();
+    _nbMenagesEnquetesController.dispose();
+    _nbTotalLatrinesController.dispose();
+    _nbLatrinesAmelioreesCtr.dispose();
+    _nbLatrinesNonAmelioreesCtr.dispose();
+    _nbLatrinesAmelioreesHygieniqueCtr.dispose();
+    _nbLatrinesAmelioreesParageesCtr.dispose();
+    _nbLatrinesNonFonctionellesCtr.dispose();
+    _nbLatrinesEndommaggersCtr.dispose();
+    _nbMenagesUtilisantVoisinCtr.dispose();
+    _nbMenagesDALCtr.dispose();
+    _nbNouvellesLatrinesCtr.dispose();
+    _nbLatrinesAutofinanceesCtr.dispose();
+    _nbLatrinesAideExterieureCtr.dispose();
+    _nbLatrinesFinanceesCommunauteCtr.dispose();
+    _montantInvestiMenagesCtr.dispose();
+    _nbLatrinesDLMCtr.dispose();
+    _nbDlmEauSavonCtr.dispose();
+    _nbDlmEauSansSavonCtr.dispose();
+    _nbMenagesSansDLMCtr.dispose();
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _dateActivite ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-    if (d != null) setState(() => _dateActivite = d);
+  // ── Chargement des données sauvegardées ───────────────────────────────────
+
+  /// Appelé par [FormHeaderWidget] dès que la localité est connue.
+  /// C'est ici qu'on charge les données depuis SQLite pour pré-remplir
+  /// les champs du formulaire.
+  void _onLocalisationLoaded(int? localiteId, dynamic userId) {
+    setState(() {
+      _localiteId = localiteId;
+      _userId = userId;
+    });
+    if (localiteId != null) {
+      _loadSavedData(localiteId);
+    }
   }
 
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+  /// Lit les données depuis SQLite et remplit les controllers.
+  Future<void> _loadSavedData(int localiteId) async {
+    final db = DatabaseService();
+    final data = await db.getQuestionnaire(
+      type: 'dernier_suivi_localite',
+      localiteId: localiteId,
+    );
+
+    if (data == null || !mounted) return;
+
+    // Remplir les controllers avec les valeurs sauvegardées
+    _dateController.text = data['dateActivite'] ?? '';
+    _nbMenagesEnquetesController.text = data['nbMenagesEnquetes']?.toString() ?? '';
+    _nbTotalLatrinesController.text = data['nbTotalLatrines']?.toString() ?? '';
+    _nbLatrinesAmelioreesCtr.text = data['nbLatrinesAmeliorees']?.toString() ?? '';
+    _nbLatrinesNonAmelioreesCtr.text = data['nbLatrinesNonAmeliorees']?.toString() ?? '';
+    _nbLatrinesAmelioreesHygieniqueCtr.text = data['nbLatrinesAmelioreesHygienique']?.toString() ?? '';
+    _nbLatrinesAmelioreesParageesCtr.text = data['nbLatrinesAmelioreesPartagees']?.toString() ?? '';
+    _nbLatrinesNonFonctionellesCtr.text = data['nbLatrinesNonFonctionnelles']?.toString() ?? '';
+    _nbLatrinesEndommaggersCtr.text = data['nbLatrinesEndommagees']?.toString() ?? '';
+    _nbMenagesUtilisantVoisinCtr.text = data['nbMenagesUtilisantVoisin']?.toString() ?? '';
+    _nbMenagesDALCtr.text = data['nbMenagesDAL']?.toString() ?? '';
+    _nbNouvellesLatrinesCtr.text = data['nbNouvellesLatrinesConstruites']?.toString() ?? '';
+    _nbLatrinesAutofinanceesCtr.text = data['nbLatrinesAutofinancees']?.toString() ?? '';
+    _nbLatrinesAideExterieureCtr.text = data['nbLatrinesAideExterieure']?.toString() ?? '';
+    _nbLatrinesFinanceesCommunauteCtr.text = data['nbLatrinesFinanceesCommunaute']?.toString() ?? '';
+    _montantInvestiMenagesCtr.text = data['montantInvestiMenages']?.toString() ?? '';
+    _nbLatrinesDLMCtr.text = data['nbLatrinesDLM']?.toString() ?? '';
+    _nbDlmEauSavonCtr.text = data['nbDlmEauSavon']?.toString() ?? '';
+    _nbDlmEauSansSavonCtr.text = data['nbDlmEauSansSavon']?.toString() ?? '';
+    _nbMenagesSansDLMCtr.text = data['nbMenagesSansDLM']?.toString() ?? '';
+
+    if (mounted) {
+      setState(() => _isSaved = true);
+    }
+  }
+
+  // ── Enregistrement ────────────────────────────────────────────────────────
+
+  /// Valide le formulaire et sauvegarde les données dans SQLite.
+  ///
+  /// Utilise [upsertQuestionnaire] : une seule ligne en base par localité.
+  /// Ne ferme PAS la page après enregistrement — les données restent visibles.
+  Future<void> _save() async {
+    // 1. Valider tous les champs
+    if (!_formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Veuillez corriger les erreurs avant d\'enregistrer'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
+
     try {
       final db = DatabaseService();
-      final data = {
-        'type': 'dernier_suivi_localite',
-        'data_json': {
-          'dateActivite': _dateActivite?.toIso8601String(),
-          'nbMenagesEnquetes': _nbMenagesEnquetes,
-          'nbTotalLatrines': _nbTotalLatrines,
-          'nbLatrinesAmeliorees': _nbLatrinesAmeliorees,
-          'nbLatrinesNonAmeliorees': _nbLatrinesNonAmeliorees,
-          'nbLatrinesAmelioreesHygienique': _nbLatrinesAmelioreesHygienique,
-          'nbLatrinesAmelioreesPartagees': _nbLatrinesAmelioreesPartagees,
-          'nbLatrinesNonFonctionnelles': _nbLatrinesNonFonctionnelles,
-          'nbLatrinesEndommagees': _nbLatrinesEndommagees,
-          'nbMenagesUtilisantVoisin': _nbMenagesUtilisantVoisin,
-          'nbMenagesDAL': _nbMenagesDAL,
-          'nbNouvellesLatrinesConstruites': _nbNouvellesLatrinesConstruites,
-          'nbLatrinesAutofinancees': _nbLatrinesAutofinancees,
-          'nbLatrinesAideExterieure': _nbLatrinesAideExterieure,
-          'nbLatrinesFinanceesCommunaute': _nbLatrinesFinanceesCommunaute,
-          'montantInvestiMenages': _montantInvestiMenages,
-          'nbLatrinesDLM': _nbLatrinesDLM,
-          'nbDlmEauSavon': _nbDlmEauSavon,
-          'nbDlmEauSansSavon': _nbDlmEauSansSavon,
-          'nbMenagesSansDLM': _nbMenagesSansDLM,
-        }.toString(),
-        'date': DateTime.now().toIso8601String(),
-        'user_id': _userId,
-        'localite_id': _localiteId,
+
+      // 2. Construire la Map des données (types corrects)
+      final dataMap = {
+        'dateActivite': _dateController.text,
+        'nbMenagesEnquetes': int.tryParse(_nbMenagesEnquetesController.text),
+        'nbTotalLatrines': int.tryParse(_nbTotalLatrinesController.text),
+        'nbLatrinesAmeliorees': int.tryParse(_nbLatrinesAmelioreesCtr.text),
+        'nbLatrinesNonAmeliorees': int.tryParse(_nbLatrinesNonAmelioreesCtr.text),
+        'nbLatrinesAmelioreesHygienique': int.tryParse(_nbLatrinesAmelioreesHygieniqueCtr.text),
+        'nbLatrinesAmelioreesPartagees': int.tryParse(_nbLatrinesAmelioreesParageesCtr.text),
+        'nbLatrinesNonFonctionnelles': int.tryParse(_nbLatrinesNonFonctionellesCtr.text),
+        'nbLatrinesEndommagees': int.tryParse(_nbLatrinesEndommaggersCtr.text),
+        'nbMenagesUtilisantVoisin': int.tryParse(_nbMenagesUtilisantVoisinCtr.text),
+        'nbMenagesDAL': int.tryParse(_nbMenagesDALCtr.text),
+        'nbNouvellesLatrinesConstruites': int.tryParse(_nbNouvellesLatrinesCtr.text),
+        'nbLatrinesAutofinancees': int.tryParse(_nbLatrinesAutofinanceesCtr.text),
+        'nbLatrinesAideExterieure': int.tryParse(_nbLatrinesAideExterieureCtr.text),
+        'nbLatrinesFinanceesCommunaute': int.tryParse(_nbLatrinesFinanceesCommunauteCtr.text),
+        'montantInvestiMenages': double.tryParse(
+            _montantInvestiMenagesCtr.text.replaceAll(',', '.')),
+        'nbLatrinesDLM': int.tryParse(_nbLatrinesDLMCtr.text),
+        'nbDlmEauSavon': int.tryParse(_nbDlmEauSavonCtr.text),
+        'nbDlmEauSansSavon': int.tryParse(_nbDlmEauSansSavonCtr.text),
+        'nbMenagesSansDLM': int.tryParse(_nbMenagesSansDLMCtr.text),
       };
-      await db.insertQuestionnaire(data);
-      await Future.delayed(const Duration(milliseconds: 600));
+
+      // 3. Sauvegarder (ou mettre à jour) dans SQLite
+      await db.upsertQuestionnaire(
+        type: 'dernier_suivi_localite',
+        localiteId: _localiteId,
+        dataMap: dataMap,
+        userId: _userId,
+      );
+
       if (mounted) {
+        setState(() => _isSaved = true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Dernier Suivi Localité enregistré avec succès'),
-            backgroundColor: Color.fromARGB(255, 16, 185, 129),
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Données enregistrées avec succès'),
+              ],
+            ),
+            backgroundColor: AppTheme.successColor,
+            duration: Duration(seconds: 3),
           ),
         );
-        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Text('Erreur lors de l\'enregistrement : $e'),
+            backgroundColor: AppTheme.errorColor,
           ),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  // ── Construction de l'interface ───────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Dernier Suivi Localité')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  FormHeaderWidget(
-                    onDataLoaded: (localiteId, userId) {
-                      setState(() {
-                        _localiteId = localiteId;
-                        _userId = userId;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  // Date
-                  InkWell(
-                    onTap: _pickDate,
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Date de l’activité',
-                        prefixIcon: Icon(Icons.calendar_today),
-                        border: OutlineInputBorder(),
-                      ),
-                      child: Text(
-                        _dateActivite != null
-                            ? '${_dateActivite!.day.toString().padLeft(2, '0')}/'
-                                  '${_dateActivite!.month.toString().padLeft(2, '0')}/'
-                                  '${_dateActivite!.year}'
-                            : 'Sélectionner une date',
-                        style: TextStyle(
-                          color: _dateActivite != null
-                              ? Colors.black87
-                              : Colors.grey,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  // Données générales
-                  const Text(
-                    'Données générales',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildNumberField(
-                    'Nombre de ménages enquêtés',
-                    (v) => _nbMenagesEnquetes = v,
-                  ),
-                  _buildNumberField(
-                    'Nombre total de latrines',
-                    (v) => _nbTotalLatrines = v,
-                  ),
-                  _buildNumberField(
-                    'Nombre de latrines améliorées',
-                    (v) => _nbLatrinesAmeliorees = v,
-                  ),
-                  _buildNumberField(
-                    'Nombre de latrines non améliorées',
-                    (v) => _nbLatrinesNonAmeliorees = v,
-                  ),
-                  const SizedBox(height: 16),
-                  // Gestion
-                  const Text(
-                    'Gestion',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildNumberField(
-                    'Nombre de latrines améliorées de manière hygiénique',
-                    (v) => _nbLatrinesAmelioreesHygienique = v,
-                  ),
-                  _buildNumberField(
-                    'Nombre de latrines améliorées de manière équitable et partagée',
-                    (v) => _nbLatrinesAmelioreesPartagees = v,
-                  ),
-                  _buildNumberField(
-                    'Nombre de latrines non fonctionnelles',
-                    (v) => _nbLatrinesNonFonctionnelles = v,
-                  ),
-                  const SizedBox(height: 16),
-                  // État
-                  const Text(
-                    'État',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildNumberField(
-                    'Nombre de latrines endommagées (hivernage)',
-                    (v) => _nbLatrinesEndommagees = v,
-                  ),
-                  _buildNumberField(
-                    'Nombre de ménages utilisant latrines voisin',
-                    (v) => _nbMenagesUtilisantVoisin = v,
-                  ),
-                  _buildNumberField(
-                    'Nombre de ménages pratiquant la défécation à l’air libre',
-                    (v) => _nbMenagesDAL = v,
-                  ),
-                  const SizedBox(height: 16),
-                  // Réalisations
-                  const Text(
-                    'Réalisations',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildNumberField(
-                    'Nombre de nouvelles latrines construites',
-                    (v) => _nbNouvellesLatrinesConstruites = v,
-                  ),
-                  _buildNumberField(
-                    'Nombre de latrines autofinancées',
-                    (v) => _nbLatrinesAutofinancees = v,
-                  ),
-                  _buildNumberField(
-                    'Nombre de latrines avec aide extérieure',
-                    (v) => _nbLatrinesAideExterieure = v,
-                  ),
-                  _buildNumberField(
-                    'Nombre de latrines financées par la communauté',
-                    (v) => _nbLatrinesFinanceesCommunaute = v,
-                  ),
-                  const SizedBox(height: 16),
-                  // Investissement
-                  const Text(
-                    'Investissement',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildDecimalField(
-                    'Montant investi par les ménages',
-                    (v) => _montantInvestiMenages = v,
-                  ),
-                  const SizedBox(height: 16),
-                  // DLM
-                  const Text(
-                    'DLM',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildNumberField(
-                    'Nombre de latrines avec DLM',
-                    (v) => _nbLatrinesDLM = v,
-                  ),
-                  _buildNumberField(
-                    'Nombre avec eau + savon',
-                    (v) => _nbDlmEauSavon = v,
-                  ),
-                  _buildNumberField(
-                    'Nombre avec eau sans savon',
-                    (v) => _nbDlmEauSansSavon = v,
-                  ),
-                  _buildNumberField(
-                    'Nombre de ménages sans DLM A FAIRE',
-                    (v) => _nbMenagesSansDLM = v,
-                  ),
-                  const SizedBox(height: 32),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.send),
-                      label: const Text('Envoyer'),
-                      onPressed: _submit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
+      backgroundColor: const Color(0xFFF5F7FA),
+      appBar: AppBar(
+        title: const Text('Dernier Suivi Localité'),
+        actions: [
+          if (_isSaved)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: AppStatusBadge(
+                label: 'Enregistré',
+                color: AppTheme.successColor,
+                icon: Icons.check_circle_outline,
               ),
             ),
-    );
-  }
-
-  Widget _buildNumberField(String label, ValueChanged<int?> onChanged) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: TextFormField(
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-        ),
-        keyboardType: TextInputType.number,
-        validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
-        onChanged: (v) => onChanged(int.tryParse(v)),
+        ],
       ),
-    );
-  }
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            // ── En-tête (localisation) ────────────────────────────────────
+            FormHeaderWidget(onDataLoaded: _onLocalisationLoaded),
 
-  Widget _buildDecimalField(String label, ValueChanged<double?> onChanged) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: TextFormField(
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
+            // ── Date de l'activité ────────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(
+                  title: 'Date de l\'activité',
+                  icon: Icons.event_note,
+                ),
+                AppDateField(
+                  label: 'Date de l\'activité',
+                  controller: _dateController,
+                  required: true,
+                  lastDate: DateTime.now(),
+                ),
+              ],
+            ),
+
+            // ── Données générales ─────────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(
+                  title: 'Données générales',
+                  icon: Icons.bar_chart,
+                ),
+                AppNumberField(
+                  label: 'Nombre de ménages enquêtés',
+                  controller: _nbMenagesEnquetesController,
+                  required: true,
+                ),
+                AppNumberField(
+                  label: 'Nombre total de latrines',
+                  controller: _nbTotalLatrinesController,
+                  required: true,
+                ),
+                AppNumberField(
+                  label: 'Nombre de latrines améliorées',
+                  controller: _nbLatrinesAmelioreesCtr,
+                ),
+                AppNumberField(
+                  label: 'Nombre de latrines non améliorées',
+                  controller: _nbLatrinesNonAmelioreesCtr,
+                ),
+              ],
+            ),
+
+            // ── Gestion ───────────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(title: 'Gestion', icon: Icons.settings),
+                AppNumberField(
+                  label: 'Latrines améliorées de manière hygiénique',
+                  controller: _nbLatrinesAmelioreesHygieniqueCtr,
+                ),
+                AppNumberField(
+                  label: 'Latrines améliorées de manière équitable et partagée',
+                  controller: _nbLatrinesAmelioreesParageesCtr,
+                ),
+                AppNumberField(
+                  label: 'Latrines non fonctionnelles',
+                  controller: _nbLatrinesNonFonctionellesCtr,
+                ),
+              ],
+            ),
+
+            // ── État ──────────────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(
+                    title: 'État des latrines', icon: Icons.home_repair_service),
+                AppNumberField(
+                  label: 'Latrines endommagées (hivernage)',
+                  controller: _nbLatrinesEndommaggersCtr,
+                ),
+                AppNumberField(
+                  label: 'Ménages utilisant latrines des voisins',
+                  controller: _nbMenagesUtilisantVoisinCtr,
+                ),
+                AppNumberField(
+                  label: 'Ménages pratiquant la défécation à l\'air libre',
+                  controller: _nbMenagesDALCtr,
+                ),
+              ],
+            ),
+
+            // ── Réalisations ──────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(
+                    title: 'Réalisations', icon: Icons.construction),
+                AppNumberField(
+                  label: 'Nouvelles latrines construites',
+                  controller: _nbNouvellesLatrinesCtr,
+                ),
+                AppNumberField(
+                  label: 'Latrines autofinancées',
+                  controller: _nbLatrinesAutofinanceesCtr,
+                ),
+                AppNumberField(
+                  label: 'Latrines avec aide extérieure',
+                  controller: _nbLatrinesAideExterieureCtr,
+                ),
+                AppNumberField(
+                  label: 'Latrines financées par la communauté',
+                  controller: _nbLatrinesFinanceesCommunauteCtr,
+                ),
+              ],
+            ),
+
+            // ── Investissement ────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(
+                    title: 'Investissement', icon: Icons.attach_money),
+                AppDecimalField(
+                  label: 'Montant investi par les ménages (MRU)',
+                  controller: _montantInvestiMenagesCtr,
+                  prefixIcon: Icons.payments_outlined,
+                ),
+              ],
+            ),
+
+            // ── DLM ───────────────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                AppSectionTitle(
+                  title: 'Dispositif de lavage des mains (DLM)',
+                  icon: Icons.wash,
+                ),
+                AppNumberField(
+                  label: 'Latrines avec DLM',
+                  controller: _nbLatrinesDLMCtr,
+                ),
+                AppNumberField(
+                  label: 'Dispositifs avec eau + savon',
+                  controller: _nbDlmEauSavonCtr,
+                ),
+                AppNumberField(
+                  label: 'Dispositifs avec eau sans savon',
+                  controller: _nbDlmEauSansSavonCtr,
+                ),
+                AppNumberField(
+                  label: 'Ménages sans DLM',
+                  controller: _nbMenagesSansDLMCtr,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // ── Bouton enregistrer ────────────────────────────────────────
+            AppSubmitButton(
+              label: 'Enregistrer',
+              isLoading: _isLoading,
+              onPressed: _save,
+              icon: Icons.save_rounded,
+            ),
+            const SizedBox(height: 24),
+          ],
         ),
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
-        onChanged: (v) => onChanged(double.tryParse(v.replaceAll(',', '.'))),
       ),
     );
   }

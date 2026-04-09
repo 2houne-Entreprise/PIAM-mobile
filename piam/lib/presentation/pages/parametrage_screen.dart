@@ -3,6 +3,7 @@ import 'package:piam/config/app_strings.dart';
 import 'package:piam/config/app_theme.dart';
 import 'package:piam/data/reference_data.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:piam/services/database_service.dart';
 
 /// Page de paramétrage avec cascades de localités (source : ReferenceData)
 class ParametrageScreen extends StatefulWidget {
@@ -46,6 +47,23 @@ class _ParametrageScreenState extends State<ParametrageScreen> {
     _formKey = GlobalKey<FormState>();
     _latitudeController = TextEditingController();
     _longitudeController = TextEditingController();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final settings = await DatabaseService().getParametreUtilisateur();
+    if (settings != null && mounted) {
+      setState(() {
+        _selectedWilayaId = settings['wilaya_id'] as int?;
+        _selectedMoughataaId = settings['moughataa_id'] as int?;
+        _selectedCommuneId = settings['commune_id'] as int?;
+        _selectedLocaliteId = settings['localite_id'] as int?;
+        _selectedOperator = settings['operateur'] as String?;
+        _selectedProject = settings['projet'] as String?;
+        _latitudeController.text = settings['gps_lat']?.toString() ?? '';
+        _longitudeController.text = settings['gps_lng']?.toString() ?? '';
+      });
+    }
   }
 
   @override
@@ -414,15 +432,40 @@ class _ParametrageScreenState extends State<ParametrageScreen> {
     });
   }
 
-  void _saveSettings() {
+  Future<void> _saveSettings() async {
     if (!_formKey.currentState!.validate()) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Paramètres sauvegardés'),
-        backgroundColor: Color.fromARGB(255, 16, 185, 129),
-      ),
-    );
-    Navigator.of(context).pushReplacementNamed('/dashboard');
+    try {
+      await DatabaseService().insertParametreUtilisateur({
+        'wilaya_id': _selectedWilayaId,
+        'moughataa_id': _selectedMoughataaId,
+        'commune_id': _selectedCommuneId,
+        'localite_id': _selectedLocaliteId,
+        'operateur': _selectedOperator,
+        'projet': _selectedProject,
+        'gps_lat': double.tryParse(_latitudeController.text),
+        'gps_lng': double.tryParse(_longitudeController.text),
+        'user_id': 'user_1', // Temporaire
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Paramètres sauvegardés avec succès'),
+            backgroundColor: AppTheme.successColor,
+          ),
+        );
+        Navigator.of(context).pushReplacementNamed('/dashboard');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur lors de la sauvegarde : $e'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    }
   }
 }

@@ -1,269 +1,245 @@
 import 'package:flutter/material.dart';
+import 'package:piam/config/app_theme.dart';
+import 'package:piam/presentation/widgets/app_form_fields.dart';
+import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
 
-/// Formulaire 9 – Conformité FDAL / ATPC
+/// Formulaire — Certification FDAL / ATPC (Conformité)
+/// 
+/// Enregistre si la certification a été obtenue et les raisons de refus le cas échéant.
 class ConformitePage extends StatefulWidget {
   final String formulaireId;
 
-  const ConformitePage({Key? key, required this.formulaireId})
-    : super(key: key);
+  const ConformitePage({Key? key, required this.formulaireId}) : super(key: key);
 
   @override
   State<ConformitePage> createState() => _ConformitePageState();
 }
 
 class _ConformitePageState extends State<ConformitePage> {
-  String? _localisationInfo;
-  DateTime? _dateCertification;
+  // ── État ─────────────────────────────────────────────────────────────────
+  final _formKey = GlobalKey<FormState>();
+  bool _isLoading = false;
+  bool _isSaved = false;
+
+  int? _localiteId;
+  dynamic _userId;
+
+  // Controllers
+  final _dateCertificationController = TextEditingController();
+  final _remarqueNonController = TextEditingController();
+
   bool? _certifie;
   final List<String> _raisonsNon = [];
-  final TextEditingController _remarqueNonController = TextEditingController();
+
   final List<String> _optionsRaisonsNon = [
     'Pas de fonds disponibles',
     'Fonds mobilisés ailleurs',
     'Administration en retard',
+    'Problème foncier / Conflits',
     'Autre (spécifier)',
   ];
-  final _formKey = GlobalKey<FormState>();
-  bool _isLoading = false;
 
   @override
   void dispose() {
+    _dateCertificationController.dispose();
     _remarqueNonController.dispose();
     super.dispose();
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _loadLocalisation();
+  // ── Chargement ────────────────────────────────────────────────────────────
+
+  void _onLocalisationLoaded(int? localiteId, dynamic userId) {
+    setState(() {
+      _localiteId = localiteId;
+      _userId = userId;
+    });
+    if (localiteId != null) _loadSavedData(localiteId);
   }
 
-  Future<void> _loadLocalisation() async {
-    final db = DatabaseService();
-    final param = await db.getParametreUtilisateur();
+  Future<void> _loadSavedData(int localiteId) async {
+    final data = await DatabaseService().getQuestionnaire(
+      type: 'conformite_fdal',
+      localiteId: localiteId,
+    );
+    if (data == null || !mounted) return;
+
     setState(() {
-      _localisationInfo = [
-        if (param != null && param['localite_id'] != null)
-          'Localité: ${param['localite_id']}',
-        if (param != null && param['commune_id'] != null)
-          'Commune: ${param['commune_id']}',
-        if (param != null && param['moughataa_id'] != null)
-          'Moughataa: ${param['moughataa_id']}',
-        if (param != null && param['wilaya_id'] != null)
-          'Wilaya: ${param['wilaya_id']}',
-        if (param != null &&
-            param['gps_lat'] != null &&
-            param['gps_lng'] != null)
-          'GPS: ${param['gps_lat']}, ${param['gps_lng']}',
-      ].where((e) => e.isNotEmpty).join(' | ');
+      _dateCertificationController.text = data['dateCertification'] ?? '';
+      _remarqueNonController.text = data['remarqueNon'] ?? '';
+      _certifie = data['certifie'] as bool?;
+      
+      _raisonsNon.clear();
+      if (data['raisonsNon'] != null) {
+        _raisonsNon.addAll(List<String>.from(data['raisonsNon']));
+      }
+
+      _isSaved = true;
     });
   }
 
-  Future<void> _pickDate() async {
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _dateCertification ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-    if (d != null) setState(() => _dateCertification = d);
-  }
+  // ── Sauvegarde ────────────────────────────────────────────────────────────
 
-  Future<void> _saveFormulaire() async {
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
-    final db = DatabaseService();
-    final param = await db.getParametreUtilisateur();
-    final data = {
-      'type': 'certification_fdal',
-      'data_json': {
-        'gps': _localisationInfo,
-        'date': _dateCertification?.toIso8601String(),
-        'statut_fdal': _certifie,
-        'raisons_non': _raisonsNon,
-        'remarque_non': _remarqueNonController.text,
-      }.toString(),
-      'date': DateTime.now().toIso8601String(),
-      'user_id': null,
-      'localite_id': param != null ? param['localite_id'] : null,
-    };
-    await db.insertQuestionnaire(data);
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Conformité enregistrée'),
-          backgroundColor: Colors.green,
-        ),
+
+    try {
+      final dataMap = {
+        'dateCertification': _dateCertificationController.text,
+        'certifie': _certifie,
+        'raisonsNon': _raisonsNon,
+        'remarqueNon': _remarqueNonController.text,
+      };
+
+      await DatabaseService().upsertQuestionnaire(
+        type: 'conformite_fdal',
+        localiteId: _localiteId,
+        dataMap: dataMap,
+        userId: _userId,
       );
+
+      if (mounted) {
+        setState(() => _isSaved = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Conformité enregistrée'),
+            backgroundColor: AppTheme.successColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur : $e'), backgroundColor: AppTheme.errorColor),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _submitFormulaire() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Conformité soumise pour validation'),
-          backgroundColor: Colors.blue,
-        ),
-      );
-    }
-  }
+  // ── Interface ─────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         title: const Text('Certification FDAL'),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  if (_localisationInfo != null &&
-                      _localisationInfo!.isNotEmpty)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.green.shade100),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.place, color: Colors.green),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              _localisationInfo!,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  // Date de certification
-                  InkWell(
-                    onTap: _pickDate,
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Date de certification',
-                        prefixIcon: Icon(Icons.calendar_today),
-                      ),
-                      child: Text(
-                        _dateCertification != null
-                            ? '${_dateCertification!.day.toString().padLeft(2, '0')}/'
-                                  '${_dateCertification!.month.toString().padLeft(2, '0')}/'
-                                  '${_dateCertification!.year}'
-                            : 'Sélectionner une date',
-                        style: TextStyle(
-                          color: _dateCertification != null
-                              ? Colors.black87
-                              : Colors.grey,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  // Statut FDAL
-                  const Text(
-                    'Certification FDAL obtenue ?',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  Row(
-                    children: [
-                      Radio<bool>(
-                        value: true,
-                        groupValue: _certifie,
-                        onChanged: (v) => setState(() => _certifie = v),
-                      ),
-                      const Text('Oui'),
-                      Radio<bool>(
-                        value: false,
-                        groupValue: _certifie,
-                        onChanged: (v) => setState(() => _certifie = v),
-                      ),
-                      const Text('Non'),
-                    ],
-                  ),
-                  if (_certifie == false)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Raison(s) de non-certification :',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        ..._optionsRaisonsNon.map(
-                          (option) => CheckboxListTile(
-                            value: _raisonsNon.contains(option),
-                            title: Text(option),
-                            onChanged: (checked) {
-                              setState(() {
-                                if (checked == true) {
-                                  _raisonsNon.add(option);
-                                } else {
-                                  _raisonsNon.remove(option);
-                                }
-                              });
-                            },
-                          ),
-                        ),
-                        if (_raisonsNon.contains('Autre (spécifier)'))
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: TextFormField(
-                              controller: _remarqueNonController,
-                              decoration: const InputDecoration(
-                                labelText: 'Précisez la raison',
-                                border: OutlineInputBorder(),
-                              ),
-                              maxLines: 2,
-                            ),
-                          ),
-                      ],
-                    ),
-                  const SizedBox(height: 32),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.save_outlined),
-                          label: const Text('Enregistrer'),
-                          onPressed: _saveFormulaire,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.send),
-                          label: const Text('Soumettre'),
-                          onPressed: _submitFormulaire,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                ],
+        actions: [
+          if (_isSaved)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: AppStatusBadge(
+                label: 'Enregistré',
+                color: AppTheme.successColor,
+                icon: Icons.check_circle_outline,
               ),
             ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            FormHeaderWidget(onDataLoaded: _onLocalisationLoaded),
+
+            // ── Section Certification ─────────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Statut de certification', icon: Icons.verified_user_rounded),
+                AppDateField(
+                  label: 'Date de l\'évaluation',
+                  controller: _dateCertificationController,
+                  required: true,
+                ),
+                const SizedBox(height: 8),
+                const Text('La localité est-elle certifiée FDAL ?', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: RadioListTile<bool>(
+                        title: const Text('Oui'),
+                        value: true,
+                        groupValue: _certifie,
+                        activeColor: AppTheme.successColor,
+                        onChanged: (v) => setState(() => _certifie = v),
+                      ),
+                    ),
+                    Expanded(
+                      child: RadioListTile<bool>(
+                        title: const Text('Non'),
+                        value: false,
+                        groupValue: _certifie,
+                        activeColor: AppTheme.errorColor,
+                        onChanged: (v) => setState(() => _certifie = v),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+
+            // ── Section Raisons (si Non) ──────────────────────────────────
+            if (_certifie == false)
+              AppFormCard(
+                children: [
+                  const AppSectionTitle(title: 'Raisons de non-certification', icon: Icons.warning_amber_rounded),
+                  const Text('Cochez les motifs identifiés :', style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  ..._optionsRaisonsNon.map((opt) => CheckboxListTile(
+                        title: Text(opt, style: const TextStyle(fontSize: 14)),
+                        value: _raisonsNon.contains(opt),
+                        onChanged: (checked) {
+                          setState(() {
+                            if (checked == true) _raisonsNon.add(opt);
+                            else _raisonsNon.remove(opt);
+                          });
+                        },
+                        controlAffinity: ListTileControlAffinity.leading,
+                        dense: true,
+                        activeColor: AppTheme.errorColor,
+                        contentPadding: EdgeInsets.zero,
+                      )),
+                  if (_raisonsNon.contains('Autre (spécifier)'))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: AppTextField(
+                        label: 'Précisez l\'autre raison',
+                        controller: _remarqueNonController,
+                        required: true,
+                        maxLines: 2,
+                      ),
+                    ),
+                ],
+              ),
+
+            // ── Section Observations ──────────────────────────────────────
+            if (_certifie == true)
+              AppFormCard(
+                children: [
+                  const AppSectionTitle(title: 'Observations', icon: Icons.comment_outlined),
+                  AppTextField(
+                    label: 'Commentaire libre',
+                    controller: _remarqueNonController,
+                    maxLines: 3,
+                  ),
+                ],
+              ),
+
+            const SizedBox(height: 8),
+            AppSubmitButton(
+              label: 'Enregistrer la conformité',
+              isLoading: _isLoading,
+              onPressed: _save,
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
     );
   }
-
-  // Suppression des widgets inutilisés
 }

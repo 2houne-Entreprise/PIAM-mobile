@@ -28,6 +28,10 @@ import 'package:piam/presentation/pages/formulaires/rapports_page.dart';
 import 'package:piam/presentation/pages/formulaires/sites_page.dart';
 import 'screens/parametrage_initial_screen.dart';
 import 'screens/ControleTravaux/parametrage_screen.dart';
+import 'screens/ControleTravaux/niveau1_donnees_generales.dart';
+import 'screens/ControleTravaux/niveau2_organisation_chantier.dart';
+import 'screens/ControleTravaux/niveau3_controle_travaux.dart';
+import 'screens/ControleTravaux/niveau4_reception.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -77,6 +81,18 @@ class MyApp extends StatelessWidget {
           WidgetBuilder builder;
 
           switch (settings.name) {
+            case '/niveau1':
+              builder = (context) => const Niveau1DonneesGenerales();
+              break;
+            case '/niveau2':
+              builder = (context) => const Niveau2OrganisationChantier();
+              break;
+            case '/niveau3':
+              builder = (context) => const Niveau3ControleTravaux();
+              break;
+            case '/niveau4':
+              builder = (context) => const Niveau4Reception();
+              break;
             case '/parametrage':
               builder = (context) => const ParametrageInitialScreen();
               break;

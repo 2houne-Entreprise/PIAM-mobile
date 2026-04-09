@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:piam/config/app_theme.dart';
+import 'package:piam/presentation/widgets/app_form_fields.dart';
+import 'package:piam/presentation/widgets/form_header_widget.dart';
+import 'package:piam/services/database_service.dart';
 
-/// Formulaire 5 – Personnel et équipes
+/// Formulaire — Personnel et équipes sur site
+/// 
+/// Gère la liste des membres, leurs rôles et leurs équipements de protection individuelle (EPI).
 class EquipesPage extends StatefulWidget {
   final String formulaireId;
 
@@ -12,14 +17,19 @@ class EquipesPage extends StatefulWidget {
 }
 
 class _EquipesPageState extends State<EquipesPage> {
+  // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _isSaved = false;
 
-  DateTime? _dateDemarrage;
-  bool _premierSecours = false;
+  int? _localiteId;
+  dynamic _userId;
+
+  // Controllers
+  final _dateDemarrageController = TextEditingController();
   final _remarquesController = TextEditingController();
 
-  // Membres de l'équipe: nom, rôle, casque, gants, chaussures, gilet
+  bool _premierSecours = false;
   final List<_MembreEquipe> _membres = [];
 
   static const List<String> _roles = [
@@ -35,316 +45,281 @@ class _EquipesPageState extends State<EquipesPage> {
   ];
 
   @override
-  void initState() {
-    super.initState();
-    _membres.add(_MembreEquipe());
-  }
-
-  @override
   void dispose() {
+    _dateDemarrageController.dispose();
     _remarquesController.dispose();
-    for (final m in _membres) {
-      m.dispose();
-    }
+    for (final m in _membres) m.dispose();
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _dateDemarrage ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-    if (picked != null) setState(() => _dateDemarrage = picked);
+  // ── Chargement ────────────────────────────────────────────────────────────
+
+  void _onLocalisationLoaded(int? localiteId, dynamic userId) {
+    setState(() {
+      _localiteId = localiteId;
+      _userId = userId;
+    });
+    if (localiteId != null) _loadSavedData(localiteId);
   }
 
-  void _addMembre() => setState(() => _membres.add(_MembreEquipe()));
+  Future<void> _loadSavedData(int localiteId) async {
+    final data = await DatabaseService().getQuestionnaire(
+      type: 'equipes_personnel',
+      localiteId: localiteId,
+    );
+    if (data == null || !mounted) {
+      if (_membres.isEmpty) setState(() => _membres.add(_MembreEquipe()));
+      return;
+    }
 
-  void _removeMembre(int index) {
     setState(() {
-      _membres[index].dispose();
-      _membres.removeAt(index);
+      _dateDemarrageController.text = data['dateDemarrage'] ?? '';
+      _remarquesController.text = data['remarques'] ?? '';
+      _premierSecours = data['premierSecours'] ?? false;
+
+      _membres.clear();
+      if (data['membres'] != null) {
+        for (var item in (data['membres'] as List)) {
+          final m = _MembreEquipe();
+          m.nomController.text = item['nom'] ?? '';
+          m.role = item['role'] ?? 'Maçon';
+          m.casque = item['casque'] ?? false;
+          m.gants = item['gants'] ?? false;
+          m.chaussures = item['chaussures'] ?? false;
+          m.gilet = item['gilet'] ?? false;
+          _membres.add(m);
+        }
+      }
+      if (_membres.isEmpty) _membres.add(_MembreEquipe());
+
+      _isSaved = true;
     });
   }
 
-  Future<void> _saveFormulaire() async {
+  // ── Sauvegarde ────────────────────────────────────────────────────────────
+
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Équipes enregistrées'),
-          backgroundColor: Colors.green,
-        ),
+
+    try {
+      final membresJson = _membres.map((m) => {
+        'nom': m.nomController.text,
+        'role': m.role,
+        'casque': m.casque,
+        'gants': m.gants,
+        'chaussures': m.chaussures,
+        'gilet': m.gilet,
+      }).toList();
+
+      final dataMap = {
+        'dateDemarrage': _dateDemarrageController.text,
+        'premierSecours': _premierSecours,
+        'remarques': _remarquesController.text,
+        'membres': membresJson,
+      };
+
+      await DatabaseService().upsertQuestionnaire(
+        type: 'equipes_personnel',
+        localiteId: _localiteId,
+        dataMap: dataMap,
+        userId: _userId,
       );
+
+      if (mounted) {
+        setState(() => _isSaved = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Données du personnel enregistrées'),
+            backgroundColor: AppTheme.successColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur : $e'), backgroundColor: AppTheme.errorColor),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _submitFormulaire() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Équipes soumises pour validation'),
-          backgroundColor: Colors.blue,
-        ),
-      );
-    }
-  }
+  // ── Interface ─────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         title: const Text('Personnel et équipes'),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        actions: [
+          if (_isSaved)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: AppStatusBadge(
+                label: 'Enregistré',
+                color: AppTheme.successColor,
+                icon: Icons.check_circle_outline,
+              ),
+            ),
+        ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _buildInfoBanner(
-                    'Renseignez les membres de l\'équipe et leurs équipements de protection',
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section A : Démarrage ─────────────────────────────────
-                  _buildSectionTitle('A. Démarrage des travaux'),
-                  const SizedBox(height: 12),
-
-                  InkWell(
-                    onTap: _pickDate,
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Date de démarrage',
-                        prefixIcon: Icon(Icons.calendar_today),
-                      ),
-                      child: Text(
-                        _dateDemarrage != null
-                            ? '${_dateDemarrage!.day.toString().padLeft(2, '0')}/'
-                                  '${_dateDemarrage!.month.toString().padLeft(2, '0')}/'
-                                  '${_dateDemarrage!.year}'
-                            : 'Sélectionner une date',
-                        style: TextStyle(
-                          color: _dateDemarrage != null
-                              ? Colors.black87
-                              : Colors.grey,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  SwitchListTile(
-                    title: const Text('Trousse de premiers secours disponible'),
-                    value: _premierSecours,
-                    onChanged: (v) => setState(() => _premierSecours = v),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section B : Membres ───────────────────────────────────
-                  _buildSectionTitle('B. Membres de l\'équipe'),
-                  const SizedBox(height: 12),
-
-                  ..._membres.asMap().entries.map(
-                    (e) => _buildMembreCard(e.key, e.value),
-                  ),
-
-                  TextButton.icon(
-                    icon: const Icon(Icons.person_add),
-                    label: const Text('Ajouter un membre'),
-                    onPressed: _addMembre,
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Remarques ─────────────────────────────────────────────
-                  _buildSectionTitle('Remarques'),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _remarquesController,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      hintText:
-                          'Remarques sur l\'équipe et les conditions de travail...',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.save_outlined),
-                          label: const Text('Enregistrer'),
-                          onPressed: _saveFormulaire,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.send),
-                          label: const Text('Soumettre'),
-                          onPressed: _submitFormulaire,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
-    );
-  }
-
-  Widget _buildMembreCard(int index, _MembreEquipe membre) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
           children: [
-            Row(
+            FormHeaderWidget(onDataLoaded: _onLocalisationLoaded),
+
+            // ── Section Installation ──────────────────────────────────────
+            AppFormCard(
               children: [
-                Text(
-                  'Membre ${index + 1}',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                const AppSectionTitle(title: 'Installation sur site', icon: Icons.engineering_outlined),
+                AppDateField(
+                  label: 'Date de démarrage effectif',
+                  controller: _dateDemarrageController,
+                  required: true,
                 ),
-                const Spacer(),
-                if (_membres.length > 1)
-                  IconButton(
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.red,
-                      size: 20,
-                    ),
-                    onPressed: () => _removeMembre(index),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
+                SwitchListTile(
+                  title: const Text('Trousse de premiers secours disponible', style: TextStyle(fontSize: 14)),
+                  value: _premierSecours,
+                  onChanged: (v) => setState(() => _premierSecours = v),
+                  activeColor: AppTheme.primaryColor,
+                  contentPadding: EdgeInsets.zero,
+                ),
               ],
             ),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: membre.nomController,
-              decoration: const InputDecoration(
-                labelText: 'Nom complet',
-                isDense: true,
+
+            // ── Liste des Membres ─────────────────────────────────────────
+            const AppSectionTitle(title: 'Liste des membres de l\'équipe', icon: Icons.group_outlined),
+            ..._membres.asMap().entries.map((e) => _buildMembreCard(e.key, e.value)),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.person_add_alt_1_outlined),
+                label: const Text('Ajouter un ouvrier'),
+                onPressed: () => setState(() => _membres.add(_MembreEquipe())),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
               ),
-              validator: (v) => (v == null || v.isEmpty) ? 'Requis' : null,
             ),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              value: membre.role,
-              items: _roles
-                  .map(
-                    (r) => DropdownMenuItem<String>(value: r, child: Text(r)),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() => membre.role = v),
-              decoration: const InputDecoration(
-                labelText: 'Rôle / Fonction',
-                isDense: true,
-              ),
-              isExpanded: true,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'EPI fournis :',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            Wrap(
+
+            // ── Remarques ─────────────────────────────────────────────────
+            AppFormCard(
               children: [
-                _epiChip('Casque', membre.casque, (v) {
-                  setState(() => membre.casque = v!);
-                }),
-                _epiChip('Gants', membre.gants, (v) {
-                  setState(() => membre.gants = v!);
-                }),
-                _epiChip('Chaussures', membre.chaussures, (v) {
-                  setState(() => membre.chaussures = v!);
-                }),
-                _epiChip('Gilet', membre.gilet, (v) {
-                  setState(() => membre.gilet = v!);
-                }),
+                const AppSectionTitle(title: 'Conditions de travail', icon: Icons.comment_outlined),
+                AppTextField(
+                  label: 'Observations sur l\'équipe',
+                  controller: _remarquesController,
+                  maxLines: 4,
+                ),
               ],
             ),
+
+            const SizedBox(height: 8),
+            AppSubmitButton(
+              label: 'Enregistrer l\'équipe',
+              isLoading: _isLoading,
+              onPressed: _save,
+            ),
+            const SizedBox(height: 32),
           ],
         ),
       ),
     );
   }
 
-  Widget _epiChip(String label, bool value, ValueChanged<bool?> onChange) {
-    return SizedBox(
-      width: 130,
-      child: CheckboxListTile(
-        title: Text(label, style: const TextStyle(fontSize: 12)),
-        value: value,
-        onChanged: onChange,
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-      ),
-    );
-  }
-
-  Widget _buildInfoBanner(String text) {
-    return Container(
+  Widget _buildMembreCard(int index, _MembreEquipe membre) {
+    return AppFormCard(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.colorBlue.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.colorBlue.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.info_outline, color: AppTheme.colorBlue, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(color: AppTheme.colorBlue, fontSize: 13),
+      children: [
+        Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+              child: Text('${index + 1}', style: const TextStyle(color: AppTheme.primaryColor)),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: AppTextField(
+                label: 'Nom complet',
+                controller: membre.nomController,
+                required: true,
+              ),
+            ),
+            if (_membres.length > 1)
+              IconButton(
+                icon: const Icon(Icons.close, color: AppTheme.errorColor),
+                onPressed: () => setState(() {
+                  _membres[index].dispose();
+                  _membres.removeAt(index);
+                }),
+              ),
+          ],
+        ),
+        Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: AppDropdownField<String>(
+                label: 'Rôle',
+                value: membre.role,
+                items: _roles.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+                onChanged: (v) => setState(() => membre.role = v!),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Équipements (EPI) :', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  Wrap(
+                    spacing: 4,
+                    children: [
+                      _epiToggle('Casque', membre.casque, (v) => setState(() => membre.casque = v)),
+                      _epiToggle('Gilet', membre.gilet, (v) => setState(() => membre.gilet = v)),
+                      _epiToggle('Gants', membre.gants, (v) => setState(() => membre.gants = v)),
+                      _epiToggle('Chaussures', membre.chaussures, (v) => setState(() => membre.chaussures = v)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-        fontWeight: FontWeight.bold,
-        color: AppTheme.colorBlue,
-      ),
+  Widget _epiToggle(String label, bool value, Function(bool) onChanged) {
+    return ActionChip(
+      label: Text(label, style: const TextStyle(fontSize: 10)),
+      avatar: value ? const Icon(Icons.check, size: 12, color: Colors.white) : null,
+      backgroundColor: value ? AppTheme.successColor : Colors.grey.shade200,
+      labelStyle: TextStyle(color: value ? Colors.white : Colors.black87),
+      padding: EdgeInsets.zero,
+      onPressed: () => onChanged(!value),
     );
   }
 }
 
 class _MembreEquipe {
   final nomController = TextEditingController();
-  String? role = 'Maçon';
+  String role = 'Maçon';
   bool casque = false;
   bool gants = false;
   bool chaussures = false;
   bool gilet = false;
 
-  void dispose() => nomController.dispose();
+  void dispose() {
+    nomController.dispose();
+  }
 }

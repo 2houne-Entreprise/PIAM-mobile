@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:piam/config/app_strings.dart';
 import 'package:piam/config/app_theme.dart';
+import 'package:piam/presentation/widgets/app_form_fields.dart';
+import 'package:piam/presentation/widgets/form_header_widget.dart';
+import 'package:piam/services/database_service.dart';
 
-/// Formulaire 4 – Sites d'assainissement
+/// Formulaire — Sites d'assainissement
+/// 
+/// Gère les caractéristiques techniques du site, les quantitatifs et les travaux associés.
 class SitesPage extends StatefulWidget {
   final String formulaireId;
 
@@ -13,9 +17,15 @@ class SitesPage extends StatefulWidget {
 }
 
 class _SitesPageState extends State<SitesPage> {
+  // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _isSaved = false;
 
+  int? _localiteId;
+  dynamic _userId;
+
+  // Controllers
   final _latitudeController = TextEditingController();
   final _longitudeController = TextEditingController();
   final _nbBlocsController = TextEditingController();
@@ -61,321 +71,248 @@ class _SitesPageState extends State<SitesPage> {
     super.dispose();
   }
 
-  Future<void> _saveFormulaire() async {
+  // ── Chargement ────────────────────────────────────────────────────────────
+
+  void _onLocalisationLoaded(int? localiteId, dynamic userId) {
+    setState(() {
+      _localiteId = localiteId;
+      _userId = userId;
+    });
+    if (localiteId != null) _loadSavedData(localiteId);
+  }
+
+  Future<void> _loadSavedData(int localiteId) async {
+    final data = await DatabaseService().getQuestionnaire(
+      type: 'sites_assainissement',
+      localiteId: localiteId,
+    );
+    if (data == null || !mounted) return;
+
+    setState(() {
+      _latitudeController.text = data['latitude']?.toString() ?? '';
+      _longitudeController.text = data['longitude']?.toString() ?? '';
+      _nbBlocsController.text = data['nbBlocs']?.toString() ?? '';
+      _nbCabinesController.text = data['nbCabines']?.toString() ?? '';
+      _nbDlmController.text = data['nbDlm']?.toString() ?? '';
+      _autresTravauxController.text = data['autresTravaux'] ?? '';
+      _superficieController.text = data['superficie']?.toString() ?? '';
+      _observationsController.text = data['observations'] ?? '';
+      
+      _typeLatrines = data['typeLatrines'];
+      _etatSiteActuel = data['etatSiteActuel'];
+      
+      _destructionAnciennesLatrines = data['destructionAnciennesLatrines'] ?? false;
+      _constructionMur = data['constructionMur'] ?? false;
+      _trancheesDrainage = data['trancheesDrainage'] ?? false;
+      _pointEauLavage = data['pointEauLavage'] ?? false;
+
+      _isSaved = true;
+    });
+  }
+
+  // ── Sauvegarde ────────────────────────────────────────────────────────────
+
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Sites enregistrés'),
-          backgroundColor: Colors.green,
-        ),
+
+    try {
+      final dataMap = {
+        'latitude': double.tryParse(_latitudeController.text),
+        'longitude': double.tryParse(_longitudeController.text),
+        'nbBlocs': int.tryParse(_nbBlocsController.text),
+        'nbCabines': int.tryParse(_nbCabinesController.text),
+        'nbDlm': int.tryParse(_nbDlmController.text),
+        'autresTravaux': _autresTravauxController.text,
+        'superficie': double.tryParse(_superficieController.text),
+        'observations': _observationsController.text,
+        'typeLatrines': _typeLatrines,
+        'etatSiteActuel': _etatSiteActuel,
+        'destructionAnciennesLatrines': _destructionAnciennesLatrines,
+        'constructionMur': _constructionMur,
+        'trancheesDrainage': _trancheesDrainage,
+        'pointEauLavage': _pointEauLavage,
+      };
+
+      await DatabaseService().upsertQuestionnaire(
+        type: 'sites_assainissement',
+        localiteId: _localiteId,
+        dataMap: dataMap,
+        userId: _userId,
       );
+
+      if (mounted) {
+        setState(() => _isSaved = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Données du site enregistrées'),
+            backgroundColor: AppTheme.successColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur : $e'), backgroundColor: AppTheme.errorColor),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _submitFormulaire() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Sites soumis pour validation'),
-          backgroundColor: Colors.blue,
-        ),
-      );
-    }
-  }
+  // ── Interface ─────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         title: const Text('Sites d\'assainissement'),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _buildInfoBanner(
-                    'Renseignez les informations sur les sites d\'assainissement',
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section A : Localisation GPS ──────────────────────────
-                  _buildSectionTitle('A. Localisation GPS'),
-                  const SizedBox(height: 12),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _latitudeController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                            signed: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Latitude',
-                            prefixIcon: Icon(Icons.gps_fixed),
-                          ),
-                          validator: (v) => (v == null || v.isEmpty)
-                              ? AppStrings.requiredField
-                              : null,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _longitudeController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                            signed: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Longitude',
-                            prefixIcon: Icon(Icons.gps_fixed),
-                          ),
-                          validator: (v) => (v == null || v.isEmpty)
-                              ? AppStrings.requiredField
-                              : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section B : Caractéristiques ──────────────────────────
-                  _buildSectionTitle('B. Caractéristiques du site'),
-                  const SizedBox(height: 12),
-
-                  DropdownButtonFormField<String>(
-                    value: _typeLatrines,
-                    items: _typesLatrines
-                        .map(
-                          (t) => DropdownMenuItem<String>(
-                            value: t,
-                            child: Text(t),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => setState(() => _typeLatrines = v),
-                    decoration: const InputDecoration(
-                      labelText: 'Type de latrines *',
-                      prefixIcon: Icon(Icons.category),
-                    ),
-                    isExpanded: true,
-                    validator: (v) =>
-                        v == null ? AppStrings.requiredField : null,
-                  ),
-                  const SizedBox(height: 12),
-
-                  DropdownButtonFormField<String>(
-                    value: _etatSiteActuel,
-                    items: _etats
-                        .map(
-                          (e) => DropdownMenuItem<String>(
-                            value: e,
-                            child: Text(e),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => setState(() => _etatSiteActuel = v),
-                    decoration: const InputDecoration(
-                      labelText: 'État actuel du site',
-                      prefixIcon: Icon(Icons.assessment),
-                    ),
-                    isExpanded: true,
-                  ),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _superficieController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Superficie (m²)',
-                      prefixIcon: Icon(Icons.square_foot),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section C : Quantitatifs ──────────────────────────────
-                  _buildSectionTitle('C. Quantitatifs'),
-                  const SizedBox(height: 12),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _nbBlocsController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Nb blocs',
-                            prefixIcon: Icon(Icons.grid_view),
-                          ),
-                          validator: (v) => (v == null || v.isEmpty)
-                              ? AppStrings.requiredField
-                              : null,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _nbCabinesController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Nb cabines',
-                            prefixIcon: Icon(Icons.cabin),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _nbDlmController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            labelText: 'Nb DLM',
-                            prefixIcon: Icon(Icons.houseboat),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section D : Travaux associés ──────────────────────────
-                  _buildSectionTitle('D. Travaux associés'),
-                  const SizedBox(height: 8),
-
-                  CheckboxListTile(
-                    title: const Text('Destruction des anciennes latrines'),
-                    value: _destructionAnciennesLatrines,
-                    onChanged: (v) =>
-                        setState(() => _destructionAnciennesLatrines = v!),
-                    controlAffinity: ListTileControlAffinity.leading,
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  CheckboxListTile(
-                    title: const Text('Construction d\'un mur'),
-                    value: _constructionMur,
-                    onChanged: (v) => setState(() => _constructionMur = v!),
-                    controlAffinity: ListTileControlAffinity.leading,
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  CheckboxListTile(
-                    title: const Text('Tranchées de drainage'),
-                    value: _trancheesDrainage,
-                    onChanged: (v) => setState(() => _trancheesDrainage = v!),
-                    controlAffinity: ListTileControlAffinity.leading,
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  CheckboxListTile(
-                    title: const Text('Point d\'eau / lavage des mains'),
-                    value: _pointEauLavage,
-                    onChanged: (v) => setState(() => _pointEauLavage = v!),
-                    controlAffinity: ListTileControlAffinity.leading,
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _autresTravauxController,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      labelText: 'Autres travaux',
-                      hintText: 'Préciser d\'autres travaux éventuels...',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Observations ──────────────────────────────────────────
-                  _buildSectionTitle('Observations'),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _observationsController,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      hintText: 'Observations générales sur les sites...',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.save_outlined),
-                          label: const Text('Enregistrer'),
-                          onPressed: _saveFormulaire,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.send),
-                          label: const Text('Soumettre'),
-                          onPressed: _submitFormulaire,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                ],
+        actions: [
+          if (_isSaved)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: AppStatusBadge(
+                label: 'Enregistré',
+                color: AppTheme.successColor,
+                icon: Icons.check_circle_outline,
               ),
             ),
-    );
-  }
-
-  Widget _buildInfoBanner(String text) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.colorBlue.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.colorBlue.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.info_outline, color: AppTheme.colorBlue, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(color: AppTheme.colorBlue, fontSize: 13),
-            ),
-          ),
         ],
       ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            FormHeaderWidget(onDataLoaded: _onLocalisationLoaded),
+
+            // ── Section GPS ───────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Coordonnées GPS du site', icon: Icons.gps_fixed_rounded),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppTextField(
+                        label: 'Latitude',
+                        controller: _latitudeController,
+                        keyboardType: TextInputType.number,
+                        required: true,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: AppTextField(
+                        label: 'Longitude',
+                        controller: _longitudeController,
+                        keyboardType: TextInputType.number,
+                        required: true,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+
+            // ── Section Caractéristiques ──────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Caractéristiques techniques', icon: Icons.settings_applications_outlined),
+                AppDropdownField<String>(
+                  label: 'Type de latrines',
+                  value: _typeLatrines,
+                  items: _typesLatrines.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                  onChanged: (v) => setState(() => _typeLatrines = v!),
+                ),
+                AppDropdownField<String>(
+                  label: 'État actuel du site',
+                  value: _etatSiteActuel,
+                  items: _etats.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                  onChanged: (v) => setState(() => _etatSiteActuel = v!),
+                ),
+                AppTextField(
+                  label: 'Superficie allouée (m²)',
+                  controller: _superficieController,
+                  keyboardType: TextInputType.number,
+                  prefixIcon: Icons.square_foot_rounded,
+                ),
+              ],
+            ),
+
+            // ── Section Quantitatifs ──────────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Quantitatifs prévus', icon: Icons.format_list_numbered_rounded),
+                Row(
+                  children: [
+                    Expanded(child: AppTextField(label: 'Nb blocs', controller: _nbBlocsController, keyboardType: TextInputType.number, required: true)),
+                    const SizedBox(width: 12),
+                    Expanded(child: AppTextField(label: 'Nb cabines', controller: _nbCabinesController, keyboardType: TextInputType.number)),
+                  ],
+                ),
+                AppTextField(
+                  label: 'Nb de DLM (Dispositifs de Lavage des Mains)',
+                  controller: _nbDlmController,
+                  keyboardType: TextInputType.number,
+                  prefixIcon: Icons.wash_rounded,
+                ),
+              ],
+            ),
+
+            // ── Section Travaux ───────────────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Travaux associés', icon: Icons.handyman_outlined),
+                _buildCheckbox('Destruction des anciennes latrines', _destructionAnciennesLatrines, (v) => setState(() => _destructionAnciennesLatrines = v!)),
+                _buildCheckbox('Construction d\'un mur de clôture', _constructionMur, (v) => setState(() => _constructionMur = v!)),
+                _buildCheckbox('Tranchées de drainage / évacuation', _trancheesDrainage, (v) => setState(() => _trancheesDrainage = v!)),
+                _buildCheckbox('Point d\'eau / robinetterie dédiée', _pointEauLavage, (v) => setState(() => _pointEauLavage = v!)),
+                const SizedBox(height: 8),
+                AppTextField(
+                  label: 'Autres travaux spécifiques',
+                  controller: _autresTravauxController,
+                  maxLines: 2,
+                ),
+              ],
+            ),
+
+            // ── Section Observations ──────────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Observations', icon: Icons.comment_outlined),
+                AppTextField(
+                  label: 'Commentaires sur le site',
+                  controller: _observationsController,
+                  maxLines: 3,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+            AppSubmitButton(
+              label: 'Enregistrer le site',
+              isLoading: _isLoading,
+              onPressed: _save,
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-        fontWeight: FontWeight.bold,
-        color: AppTheme.colorBlue,
-      ),
+  Widget _buildCheckbox(String label, bool value, Function(bool?) onChanged) {
+    return CheckboxListTile(
+      title: Text(label, style: const TextStyle(fontSize: 14)),
+      value: value,
+      onChanged: onChanged,
+      controlAffinity: ListTileControlAffinity.leading,
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      activeColor: AppTheme.primaryColor,
     );
   }
 }

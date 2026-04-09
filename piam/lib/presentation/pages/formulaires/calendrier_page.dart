@@ -1,29 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:piam/config/app_theme.dart';
+import 'package:piam/presentation/widgets/app_form_fields.dart';
+import 'package:piam/presentation/widgets/form_header_widget.dart';
+import 'package:piam/services/database_service.dart';
 
-/// Formulaire 6 – Calendrier des travaux
+/// Formulaire — Calendrier des travaux
+/// 
+/// Gère les dates prévisionnelles, réelles, le taux d'avancement et les jalons.
 class CalendrierPage extends StatefulWidget {
   final String formulaireId;
 
-  const CalendrierPage({Key? key, required this.formulaireId})
-    : super(key: key);
+  const CalendrierPage({Key? key, required this.formulaireId}) : super(key: key);
 
   @override
   State<CalendrierPage> createState() => _CalendrierPageState();
 }
 
 class _CalendrierPageState extends State<CalendrierPage> {
+  // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _isSaved = false;
 
-  DateTime? _dateDebutPrevue;
-  DateTime? _dateFinPrevue;
-  DateTime? _dateDebutReelle;
-  DateTime? _dateFinReelle;
+  int? _localiteId;
+  dynamic _userId;
 
-  double _avancement = 0;
+  // Controllers
+  final _dateDebutPrevueController = TextEditingController();
+  final _dateFinPrevueController = TextEditingController();
+  final _dateDebutReelleController = TextEditingController();
+  final _dateFinReelleController = TextEditingController();
   final _observationsController = TextEditingController();
 
+  double _avancement = 0;
   final List<_Jalon> _jalons = [];
 
   static const List<String> _statutsJalon = [
@@ -37,415 +46,333 @@ class _CalendrierPageState extends State<CalendrierPage> {
   @override
   void initState() {
     super.initState();
-    _jalons.add(_Jalon());
+    // Par défaut, pas de jalon vide au début car ils seront chargés depuis la base
   }
 
   @override
   void dispose() {
+    _dateDebutPrevueController.dispose();
+    _dateFinPrevueController.dispose();
+    _dateDebutReelleController.dispose();
+    _dateFinReelleController.dispose();
     _observationsController.dispose();
-    for (final j in _jalons) {
-      j.dispose();
-    }
+    for (final j in _jalons) j.dispose();
     super.dispose();
   }
 
-  Future<DateTime?> _pickDate(DateTime? initial) => showDatePicker(
-    context: context,
-    initialDate: initial ?? DateTime.now(),
-    firstDate: DateTime(2020),
-    lastDate: DateTime(2030),
-  );
+  // ── Chargement ────────────────────────────────────────────────────────────
 
-  String _formatDate(DateTime? d) {
-    if (d == null) return 'Sélectionner';
-    return '${d.day.toString().padLeft(2, '0')}/'
-        '${d.month.toString().padLeft(2, '0')}/'
-        '${d.year}';
+  void _onLocalisationLoaded(int? localiteId, dynamic userId) {
+    setState(() {
+      _localiteId = localiteId;
+      _userId = userId;
+    });
+    if (localiteId != null) _loadSavedData(localiteId);
   }
 
-  Future<void> _saveFormulaire() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) {
-      setState(() => _isLoading = false);
+  Future<void> _loadSavedData(int localiteId) async {
+    final data = await DatabaseService().getQuestionnaire(
+      type: 'calendrier_travaux',
+      localiteId: localiteId,
+    );
+    if (data == null || !mounted) {
+      if (_jalons.isEmpty) setState(() => _jalons.add(_Jalon())); // Un jalon vide si rien
+      return;
+    }
+
+    setState(() {
+      _dateDebutPrevueController.text = data['dateDebutPrevue'] ?? '';
+      _dateFinPrevueController.text = data['dateFinPrevue'] ?? '';
+      _dateDebutReelleController.text = data['dateDebutReelle'] ?? '';
+      _dateFinReelleController.text = data['dateFinReelle'] ?? '';
+      _observationsController.text = data['observations'] ?? '';
+      _avancement = (data['avancement'] ?? 0.0).toDouble();
+
+      // Jalons
+      _jalons.clear();
+      if (data['jalons'] != null) {
+        for (var item in (data['jalons'] as List)) {
+          final j = _Jalon();
+          j.nomController.text = item['nom'] ?? '';
+          j.statut = item['statut'] ?? 'Planifié';
+          j.dateController.text = item['date'] ?? '';
+          _jalons.add(j);
+        }
+      }
+      if (_jalons.isEmpty) _jalons.add(_Jalon());
+
+      _isSaved = true;
+    });
+  }
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Calendrier enregistré'),
-          backgroundColor: Colors.green,
-        ),
+        const SnackBar(content: Text('Veuillez corriger les erreurs'), backgroundColor: AppTheme.errorColor),
       );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final jalonsJson = _jalons.map((j) => {
+        'nom': j.nomController.text,
+        'statut': j.statut,
+        'date': j.dateController.text,
+      }).toList();
+
+      final dataMap = {
+        'dateDebutPrevue': _dateDebutPrevueController.text,
+        'dateFinPrevue': _dateFinPrevueController.text,
+        'dateDebutReelle': _dateDebutReelleController.text,
+        'dateFinReelle': _dateFinReelleController.text,
+        'avancement': _avancement,
+        'jalons': jalonsJson,
+        'observations': _observationsController.text,
+      };
+
+      await DatabaseService().upsertQuestionnaire(
+        type: 'calendrier_travaux',
+        localiteId: _localiteId,
+        dataMap: dataMap,
+        userId: _userId,
+      );
+
+      if (mounted) {
+        setState(() => _isSaved = true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Calendrier enregistré avec succès !'),
+            backgroundColor: AppTheme.successColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur : $e'), backgroundColor: AppTheme.errorColor),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _submitFormulaire() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (mounted) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Calendrier soumis pour validation'),
-          backgroundColor: Colors.blue,
-        ),
-      );
-    }
-  }
+  // ── Interface ─────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         title: const Text('Calendrier des travaux'),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _buildInfoBanner(
-                    'Renseignez le calendrier prévisionnel et réel des travaux',
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section A : Dates prévisionnelles ─────────────────────
-                  _buildSectionTitle('A. Dates prévisionnelles'),
-                  const SizedBox(height: 12),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: InkWell(
-                          onTap: () async {
-                            final d = await _pickDate(_dateDebutPrevue);
-                            if (d != null) setState(() => _dateDebutPrevue = d);
-                          },
-                          child: InputDecorator(
-                            decoration: const InputDecoration(
-                              labelText: 'Début prévu',
-                              prefixIcon: Icon(Icons.event),
-                              isDense: true,
-                            ),
-                            child: Text(
-                              _formatDate(_dateDebutPrevue),
-                              style: TextStyle(
-                                color: _dateDebutPrevue != null
-                                    ? Colors.black87
-                                    : Colors.grey,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: InkWell(
-                          onTap: () async {
-                            final d = await _pickDate(_dateFinPrevue);
-                            if (d != null) setState(() => _dateFinPrevue = d);
-                          },
-                          child: InputDecorator(
-                            decoration: const InputDecoration(
-                              labelText: 'Fin prévue',
-                              prefixIcon: Icon(Icons.event_available),
-                              isDense: true,
-                            ),
-                            child: Text(
-                              _formatDate(_dateFinPrevue),
-                              style: TextStyle(
-                                color: _dateFinPrevue != null
-                                    ? Colors.black87
-                                    : Colors.grey,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section B : Dates réelles ─────────────────────────────
-                  _buildSectionTitle('B. Dates réelles d\'exécution'),
-                  const SizedBox(height: 12),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: InkWell(
-                          onTap: () async {
-                            final d = await _pickDate(_dateDebutReelle);
-                            if (d != null) setState(() => _dateDebutReelle = d);
-                          },
-                          child: InputDecorator(
-                            decoration: const InputDecoration(
-                              labelText: 'Début réel',
-                              prefixIcon: Icon(Icons.play_circle_outline),
-                              isDense: true,
-                            ),
-                            child: Text(
-                              _formatDate(_dateDebutReelle),
-                              style: TextStyle(
-                                color: _dateDebutReelle != null
-                                    ? Colors.black87
-                                    : Colors.grey,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: InkWell(
-                          onTap: () async {
-                            final d = await _pickDate(_dateFinReelle);
-                            if (d != null) setState(() => _dateFinReelle = d);
-                          },
-                          child: InputDecorator(
-                            decoration: const InputDecoration(
-                              labelText: 'Fin réelle',
-                              prefixIcon: Icon(Icons.stop_circle_outlined),
-                              isDense: true,
-                            ),
-                            child: Text(
-                              _formatDate(_dateFinReelle),
-                              style: TextStyle(
-                                color: _dateFinReelle != null
-                                    ? Colors.black87
-                                    : Colors.grey,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section C : Avancement ─────────────────────────────────
-                  _buildSectionTitle('C. Taux d\'avancement'),
-                  const SizedBox(height: 12),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Slider(
-                          value: _avancement,
-                          min: 0,
-                          max: 100,
-                          divisions: 20,
-                          label: '${_avancement.toInt()} %',
-                          onChanged: (v) => setState(() => _avancement = v),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 56,
-                        child: Text(
-                          '${_avancement.toInt()} %',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Section D : Jalons ─────────────────────────────────────
-                  _buildSectionTitle('D. Jalons du projet'),
-                  const SizedBox(height: 12),
-
-                  ..._jalons.asMap().entries.map(
-                    (e) => _buildJalonCard(e.key, e.value),
-                  ),
-
-                  TextButton.icon(
-                    icon: const Icon(Icons.add),
-                    label: const Text('Ajouter un jalon'),
-                    onPressed: () => setState(() => _jalons.add(_Jalon())),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // ── Observations ──────────────────────────────────────────
-                  _buildSectionTitle('Observations'),
-                  const SizedBox(height: 12),
-
-                  TextFormField(
-                    controller: _observationsController,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                      hintText:
-                          'Observations sur le déroulement du chantier...',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.save_outlined),
-                          label: const Text('Enregistrer'),
-                          onPressed: _saveFormulaire,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.send),
-                          label: const Text('Soumettre'),
-                          onPressed: _submitFormulaire,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                ],
+        actions: [
+          if (_isSaved)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: AppStatusBadge(
+                label: 'Enregistré',
+                color: AppTheme.successColor,
+                icon: Icons.check_circle_outline,
               ),
             ),
-    );
-  }
-
-  Widget _buildJalonCard(int index, _Jalon jalon) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
           children: [
-            Row(
+            FormHeaderWidget(onDataLoaded: _onLocalisationLoaded),
+
+            // ── Dates Prévisionnelles ─────────────────────────────────────
+            AppFormCard(
               children: [
-                Expanded(
-                  flex: 3,
-                  child: TextFormField(
-                    controller: jalon.nomController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nom du jalon',
-                      isDense: true,
+                const AppSectionTitle(title: 'Dates prévisionnelles', icon: Icons.event_note),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppDateField(
+                        label: 'Début prévu',
+                        controller: _dateDebutPrevueController,
+                        required: true,
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 2,
-                  child: DropdownButtonFormField<String>(
-                    value: jalon.statut,
-                    items: _statutsJalon
-                        .map(
-                          (s) => DropdownMenuItem<String>(
-                            value: s,
-                            child: Text(
-                              s,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (v) => setState(() => jalon.statut = v!),
-                    decoration: const InputDecoration(
-                      labelText: 'Statut',
-                      isDense: true,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: AppDateField(
+                        label: 'Fin prévue',
+                        controller: _dateFinPrevueController,
+                        required: true,
+                      ),
                     ),
-                    isExpanded: true,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    color: Colors.red,
-                    size: 20,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _jalons[index].dispose();
-                      _jalons.removeAt(index);
-                    });
-                  },
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            InkWell(
-              onTap: () async {
-                final d = await _pickDate(jalon.date);
-                if (d != null) setState(() => jalon.date = d);
-              },
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Date du jalon',
-                  prefixIcon: Icon(Icons.calendar_month),
-                  isDense: true,
+
+            // ── Dates Réelles ─────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Exécution réelle', icon: Icons.play_circle_fill_outlined),
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppDateField(
+                        label: 'Début réel',
+                        controller: _dateDebutReelleController,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: AppDateField(
+                        label: 'Fin réelle',
+                        controller: _dateFinReelleController,
+                      ),
+                    ),
+                  ],
                 ),
-                child: Text(
-                  _formatDate(jalon.date),
-                  style: TextStyle(
-                    color: jalon.date != null ? Colors.black87 : Colors.grey,
-                    fontSize: 14,
-                  ),
+              ],
+            ),
+
+            // ── Avancement ────────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Taux d\'avancement', icon: Icons.speed),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Slider(
+                        value: _avancement,
+                        min: 0,
+                        max: 100,
+                        divisions: 20,
+                        activeColor: AppTheme.primaryColor,
+                        label: '${_avancement.toInt()}%',
+                        onChanged: (v) => setState(() => _avancement = v),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${_avancement.toInt()}%',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryColor),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+
+            // ── Jalons ────────────────────────────────────────────────────
+            const AppSectionTitle(title: 'Jalons du projet', icon: Icons.flag_rounded),
+            ..._jalons.asMap().entries.map((e) => _buildJalonCard(e.key, e.value)),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.add_circle_outline),
+                label: const Text('Ajouter un jalon'),
+                onPressed: () => setState(() => _jalons.add(_Jalon())),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
             ),
+
+            // ── Observations ──────────────────────────────────────────────
+            AppFormCard(
+              children: [
+                const AppSectionTitle(title: 'Observations', icon: Icons.comment_outlined),
+                AppTextField(
+                  label: 'Observations sur le chantier',
+                  controller: _observationsController,
+                  maxLines: 4,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+            AppSubmitButton(
+              label: 'Enregistrer le calendrier',
+              isLoading: _isLoading,
+              onPressed: _save,
+            ),
+            const SizedBox(height: 32),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildInfoBanner(String text) {
-    return Container(
+  Widget _buildJalonCard(int index, _Jalon jalon) {
+    return AppFormCard(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.colorBlue.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.colorBlue.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.info_outline, color: AppTheme.colorBlue, size: 20),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(color: AppTheme.colorBlue, fontSize: 13),
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                children: [
+                  AppTextField(
+                    label: 'Nom du jalon',
+                    controller: jalon.nomController,
+                    required: true,
+                  ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: AppDropdownField<String>(
+                          label: 'Statut',
+                          value: jalon.statut,
+                          items: _statutsJalon.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                          onChanged: (v) => setState(() => jalon.statut = v!),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: AppDateField(
+                          label: 'Date',
+                          controller: jalon.dateController,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-        fontWeight: FontWeight.bold,
-        color: AppTheme.colorBlue,
-      ),
+            if (_jalons.length > 1)
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: AppTheme.errorColor),
+                onPressed: () => setState(() {
+                  _jalons[index].dispose();
+                  _jalons.removeAt(index);
+                }),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }
 
 class _Jalon {
   final nomController = TextEditingController();
+  final dateController = TextEditingController();
   String statut = 'Planifié';
-  DateTime? date;
 
-  void dispose() => nomController.dispose();
+  void dispose() {
+    nomController.dispose();
+    dateController.dispose();
+  }
 }
