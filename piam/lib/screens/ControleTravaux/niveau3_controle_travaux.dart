@@ -926,29 +926,15 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
     );
   }
 
-  Future<int?> _resolveProjectId() async {
-    // Nouvelle logique : récupérer l'ID du dernier questionnaire de type 'donnees_generales'
-    final db = await _dbService.database;
-    final result = await db.query(
-      'questionnaires',
-      where: 'type = ?',
-      whereArgs: ['donnees_generales'],
-      orderBy: 'id DESC',
-      limit: 1,
-    );
-    if (result.isNotEmpty) {
-      return result.first['id'] as int?;
-    }
-    return null;
-  }
-
   Future<void> _saveNiveau3() async {
-    final projectId = await _resolveProjectId();
-    if (projectId == null) {
+    final param = await _dbService.getParametreUtilisateur();
+    final activeLocaliteId = param?['localite_id'];
+
+    if (activeLocaliteId == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Aucun projet actif. Complétez d\'abord le Niveau 1.'),
+          content: Text('Veuillez d\'abord effectuer le paramétrage initial'),
         ),
       );
       return;
@@ -1042,11 +1028,11 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
       'photosGps': _photosGps,
     };
 
-    await _dbService.insertQuestionnaire({
-      'type': 'controle_travaux',
-      'data_json': jsonEncode(payload),
-      'date': DateTime.now().toIso8601String(),
-    });
+    await _dbService.upsertQuestionnaire(
+      type: 'controle_travaux',
+      localiteId: activeLocaliteId,
+      dataMap: payload,
+    );
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

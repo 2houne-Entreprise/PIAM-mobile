@@ -6,7 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../services/database_service.dart';
-import 'rapports/dashboard_rapports.dart';
+import '../../presentation/widgets/form_header_widget.dart';
+import '../rapports/dashboard_rapports.dart' as new_dashboard;
 
 class Niveau4Reception extends StatefulWidget {
   static const String routeName = '/niveau4';
@@ -21,19 +22,16 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
   final DatabaseService _dbService = DatabaseService();
   final ImagePicker _picker = ImagePicker();
 
-  final TextEditingController _dateReceptionTechniqueController =
-      TextEditingController();
-  final TextEditingController _reservesTechniqueController =
-      TextEditingController();
-  final TextEditingController _delaiTechniqueController =
-      TextEditingController();
+  int? _localiteId;
+  dynamic _userId;
 
-  final TextEditingController _dateReceptionProvisoireController =
-      TextEditingController();
-  final TextEditingController _reservesProvisoireController =
-      TextEditingController();
-  final TextEditingController _delaiProvisoireController =
-      TextEditingController();
+  final TextEditingController _dateReceptionTechniqueController = TextEditingController();
+  final TextEditingController _reservesTechniqueController = TextEditingController();
+  final TextEditingController _delaiTechniqueController = TextEditingController();
+
+  final TextEditingController _dateReceptionProvisoireController = TextEditingController();
+  final TextEditingController _reservesProvisoireController = TextEditingController();
+  final TextEditingController _delaiProvisoireController = TextEditingController();
 
   final Map<String, String?> _photos = {
     'receptionTechnique': null,
@@ -56,6 +54,41 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
     super.dispose();
   }
 
+  void _onLocalisationLoaded(int? localiteId, dynamic userId) {
+    setState(() {
+      _localiteId = localiteId;
+      _userId = userId;
+    });
+    if (localiteId != null) _loadSavedData(localiteId);
+  }
+
+  Future<void> _loadSavedData(int localiteId) async {
+    final data = await _dbService.getQuestionnaire(
+      type: 'reception',
+      localiteId: localiteId,
+    );
+    if (data == null || !mounted) return;
+
+    setState(() {
+      final rt = data['reception_technique'] ?? {};
+      final rp = data['reception_provisoire'] ?? {};
+      
+      _dateReceptionTechniqueController.text = rt['date'] ?? '';
+      _reservesTechniqueController.text = rt['reserves'] ?? '';
+      _delaiTechniqueController.text = rt['delai_levee_reserves'] ?? '';
+      
+      _dateReceptionProvisoireController.text = rp['date'] ?? '';
+      _reservesProvisoireController.text = rp['reserves'] ?? '';
+      _delaiProvisoireController.text = rp['delai_levee_reserves'] ?? '';
+      
+      _photos['receptionTechnique'] = rt['photo'];
+      _photos['receptionProvisoire'] = rp['photo'];
+      
+      _photosGps['receptionTechnique'] = (rt['photoGps'] as Map?)?.cast<String, String>();
+      _photosGps['receptionProvisoire'] = (rp['photoGps'] as Map?)?.cast<String, String>();
+    });
+  }
+
   Future<void> _takePhoto(String sectionKey) async {
     try {
       final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
@@ -74,9 +107,7 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Permission GPS refusée')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Permission GPS refusée')));
         setState(() {
           _photos[sectionKey] = photo.path;
         });
@@ -102,11 +133,7 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
     }
   }
 
-  Widget _buildTextField(
-    String label,
-    TextEditingController controller, {
-    int maxLines = 1,
-  }) {
+  Widget _buildTextField(String label, TextEditingController controller, {int maxLines = 1}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: TextField(
@@ -149,12 +176,9 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
               const SizedBox(height: 12),
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: Image.file(
-                  File(photoPath),
-                  height: 180,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
+                child: photoPath.startsWith('/') 
+                    ? Image.file(File(photoPath), height: 180, width: double.infinity, fit: BoxFit.cover)
+                    : Image.network(photoPath, height: 180, width: double.infinity, fit: BoxFit.cover),
               ),
             ],
             if (gps != null) ...[
@@ -190,45 +214,20 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
         children: [
           _buildTextField('Date', dateController),
           _buildTextField('Réserves émises', reservesController, maxLines: 3),
-          _buildTextField(
-            'Délai fixé pour levée des réserves',
-            delaiController,
-          ),
+          _buildTextField('Délai fixé pour levée des réserves', delaiController),
           _buildPhotoField(photoKey, photoLabel),
         ],
       ),
     );
   }
 
-  Future<int?> _resolveProjectId() async {
-    // Nouvelle logique : récupérer l'ID du dernier questionnaire de type 'donnees_generales'
-    final db = await _dbService.database;
-    final result = await db.query(
-      'questionnaires',
-      where: 'type = ?',
-      whereArgs: ['donnees_generales'],
-      orderBy: 'id DESC',
-      limit: 1,
-    );
-    if (result.isNotEmpty) {
-      return result.first['id'] as int?;
-    }
-    return null;
-  }
-
   Future<void> _saveNiveau4() async {
-    final projectId = await _resolveProjectId();
-    if (projectId == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Aucun projet actif. Complétez d\'abord le Niveau 1.'),
-        ),
-      );
+    if (_localiteId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez sélectionner un site')));
       return;
     }
 
-    final payload = {
+    final dataMap = {
       'reception_technique': {
         'date': _dateReceptionTechniqueController.text,
         'reserves': _reservesTechniqueController.text,
@@ -245,16 +244,15 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
       },
     };
 
-    await _dbService.insertQuestionnaire({
-      'type': 'reception',
-      'data_json': jsonEncode(payload),
-      'date': DateTime.now().toIso8601String(),
-    });
+    await _dbService.upsertQuestionnaire(
+      type: 'reception',
+      localiteId: _localiteId,
+      dataMap: dataMap,
+      userId: _userId,
+    );
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Niveau 4 enregistré avec succès')),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Niveau 4 enregistré avec succès')));
   }
 
   @override
@@ -264,6 +262,8 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          FormHeaderWidget(onDataLoaded: _onLocalisationLoaded),
+          const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -274,14 +274,9 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
             child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Questionnaire de réception',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                ),
+                Text('Questionnaire de réception', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                 SizedBox(height: 6),
-                Text(
-                  'Renseigner les dates, réserves, délais et joindre les photos obligatoires prévues au formulaire.',
-                ),
+                Text('Renseigner les dates, réserves, délais et joindre les photos obligatoires prévues au formulaire.'),
               ],
             ),
           ),
@@ -308,15 +303,16 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: _saveNiveau4,
+            style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
             child: const Text('Enregistrer Niveau 4'),
           ),
           const SizedBox(height: 12),
           ElevatedButton(
-            onPressed: () =>
-                Navigator.pushNamed(context, DashboardRapportsScreen.routeName),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-            child: const Text('Aller aux tableaux de synthèse'),
+            onPressed: () => Navigator.pushNamed(context, '/rapports_dashboard'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, minimumSize: const Size.fromHeight(50)),
+            child: const Text('Aller aux Tableaux de Synthèse'),
           ),
+          const SizedBox(height: 32),
         ],
       ),
     );

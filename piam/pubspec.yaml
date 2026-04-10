@@ -75,6 +75,10 @@ dependencies:
   # Utilities
   logger: ^2.3.0
 
+  # PDF Generation
+  pdf: ^3.10.3
+  printing: ^5.11.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

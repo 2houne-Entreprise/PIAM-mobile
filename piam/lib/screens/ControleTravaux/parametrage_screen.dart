@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'configurer_site_screen.dart';
 import 'niveau1_donnees_generales.dart';
-import 'rapports/dashboard_rapports.dart';
+import '../rapports/dashboard_rapports.dart';
 
 class ParametrageScreen extends StatelessWidget {
   static const String routeName = '/parametrage';
@@ -20,9 +20,7 @@ class ParametrageScreen extends StatelessWidget {
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () {
-                Navigator.of(
-                  context,
-                ).pushNamed(DashboardRapportsScreen.routeName);
+                Navigator.of(context).pushNamed('/rapports_dashboard');
               },
               icon: const Icon(Icons.assessment_outlined),
               style: ElevatedButton.styleFrom(

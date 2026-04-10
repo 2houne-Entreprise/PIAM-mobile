@@ -240,17 +240,15 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
       'projectName': _projectNameController.text.trim(),
       'companyName': _companyNameController.text.trim(),
       'wilaya': _wilaya ?? '',
-      'wilayaId': (_wilayaIds[_wilaya] ?? '').toString(),
-      'moughataaId': (_moughataaIds[_moughataa] ?? '').toString(),
-      'communeId': (_communeIds[_commune] ?? '').toString(),
-      'localiteId': (_localiteIds[_localite] ?? '').toString(),
+      'wilayaId': _wilayaIds[_wilaya]?.toString() ?? '',
+      'moughataaId': _moughataaIds[_moughataa]?.toString() ?? '',
+      'communeId': _communeIds[_commune]?.toString() ?? '',
+      'localiteId': _localiteIds[_localite]?.toString() ?? '',
       'codeAnsade': _codeANSADE,
       'etablissement': _etablissement,
-      'infrastructureId': (_siteLabelsToId[_siteSelectionne] ?? '').toString(),
-      'infrastructureType': (_siteLabelsToType[_siteSelectionne] ?? '')
-          .toString(),
-      'infrastructureCode': (_siteLabelsToCode[_siteSelectionne] ?? '')
-          .toString(),
+      'infrastructureId': _siteLabelsToId[_siteSelectionne]?.toString() ?? '',
+      'infrastructureType': _siteLabelsToType[_siteSelectionne]?.toString() ?? '',
+      'infrastructureCode': _siteLabelsToCode[_siteSelectionne]?.toString() ?? '',
       'intituleProjet': _intituleProjetController.text.trim(),
       'marcheTravaux': _marcheTravauxController.text.trim(),
       'numeroMarche': _numeroMarcheController.text.trim(),
@@ -264,25 +262,28 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
       'latrinesArealiser': _latrinesArealiserController.text.trim(),
       'typeLatrinesArealiser': _typeLatrinesArealiser,
       'toit': _toit,
-      'nbBlocs': (int.tryParse(_nbBlocsController.text) ?? 0).toString(),
-      'nbCabines': (int.tryParse(_nbCabinesController.text) ?? 0).toString(),
-      'nbDLM': (int.tryParse(_nbDLMController.text) ?? 0).toString(),
+      'nbBlocs': int.tryParse(_nbBlocsController.text) ?? 0,
+      'nbCabines': int.tryParse(_nbCabinesController.text) ?? 0,
+      'nbDLM': int.tryParse(_nbDLMController.text) ?? 0,
       'autresTravaux': _autresTravauxController.text.trim(),
       'autrePreciser': _autrePreciserController.text.trim(),
       'destructionAnciennes': _destructionAncienne ? 'Oui' : 'Non',
       'constructionMur': _constructionMur ? 'Oui' : 'Non',
       'codeMesre': _codeMesreController.text.trim(),
       'codeMs': _codeMsController.text.trim(),
-      'effectif': (int.tryParse(_effectifController.text) ?? 0).toString(),
-      'nbPotentiels': (int.tryParse(_nbPotentielsController.text) ?? 0)
-          .toString(),
+      'effectif': int.tryParse(_effectifController.text) ?? 0,
+      'nbPotentiels': int.tryParse(_nbPotentielsController.text) ?? 0,
       'createdAt': DateTime.now().toIso8601String(),
     };
-    await _dbService.insertQuestionnaire({
-      'type': 'donnees_generales',
-      'data_json': data.toString(),
-      'date': DateTime.now().toIso8601String(),
-    });
+
+    // Use current site ID from initial parameters if form hasn't explicitly selected one
+    final activeLocaliteId = _localiteIds[_localite] ?? _paramInit?['localite_id'];
+
+    await _dbService.upsertQuestionnaire(
+      type: 'identification', // 'identification' used by RapportService
+      localiteId: activeLocaliteId,
+      dataMap: data,
+    );
 
     if (!mounted) return;
     ScaffoldMessenger.of(

@@ -179,8 +179,27 @@ class _Niveau2OrganisationChantierState
     super.dispose();
   }
 
+  Map<String, dynamic>? _paramInit;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadParametrageInitial();
+  }
+
+  Future<void> _loadParametrageInitial() async {
+    final param = await _dbService.getParametreUtilisateur();
+    if (mounted) setState(() => _paramInit = param);
+  }
+
   Future<void> _savePersonnel() async {
     if (!_personnelForm.currentState!.validate()) return;
+    final activeLocaliteId = _paramInit?['localite_id'];
+    if (activeLocaliteId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez d\'abord effectuer le paramétrage initial')));
+      return;
+    }
+
     final data = {
       'nom': _nomPersonnelController.text.trim(),
       'fonction': _fonctionPersonnel,
@@ -196,60 +215,64 @@ class _Niveau2OrganisationChantierState
       'remarque': _remarquePersonnelController.text.trim(),
       'createdAt': DateTime.now().toIso8601String(),
     };
-    await _dbService.insertQuestionnaire({
-      'type': 'organisation_chantier_personnel',
-      'data_json': data.toString(),
-      'date': DateTime.now().toIso8601String(),
-    });
+
+    await _dbService.upsertQuestionnaire(
+      type: 'organisation_chantier_personnel',
+      localiteId: activeLocaliteId,
+      dataMap: data,
+    );
+
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Personnel ajouté')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Personnel ajouté')));
   }
 
   Future<void> _saveEquipementsChecklist() async {
-    final data = _equipementChecklist
-        .map(
-          (item) => {
-            'nom': item['nom'],
-            'etat': item['etat'],
-            'remarque': item['remarque'],
-            'date': item['date'],
-          },
-        )
-        .toList();
-    await _dbService.insertQuestionnaire({
-      'type': 'organisation_chantier_equipements',
-      'data_json': data.toString(),
-      'date': DateTime.now().toIso8601String(),
-    });
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Checklist équipements sauvegardée')),
+    final activeLocaliteId = _paramInit?['localite_id'];
+    if (activeLocaliteId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez d\'abord effectuer le paramétrage initial')));
+      return;
+    }
+
+    final data = _equipementChecklist.map((item) => {
+      'nom': item['nom'],
+      'etat': item['etat'],
+      'remarque': item['remarque'],
+      'date': item['date'],
+    }).toList();
+
+    await _dbService.upsertQuestionnaire(
+      type: 'organisation_chantier_equipements',
+      localiteId: activeLocaliteId,
+      dataMap: {'items': data},
     );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Checklist équipements sauvegardée')));
   }
 
   Future<void> _saveMateriauxChecklist() async {
-    final data = _materiauxChecklist
-        .map(
-          (item) => {
-            'nom': item['nom'],
-            'quantite': int.tryParse(item['quantite']?.toString() ?? '') ?? 0,
-            'qualite': item['qualite'],
-            'recommandation': item['recommandation'],
-            'date': item['date'],
-          },
-        )
-        .toList();
-    await _dbService.insertQuestionnaire({
-      'type': 'organisation_chantier_materiaux',
-      'data_json': data.toString(),
-      'date': DateTime.now().toIso8601String(),
-    });
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Checklist matériaux sauvegardée')),
+    final activeLocaliteId = _paramInit?['localite_id'];
+    if (activeLocaliteId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez d\'abord effectuer le paramétrage initial')));
+      return;
+    }
+
+    final data = _materiauxChecklist.map((item) => {
+      'nom': item['nom'],
+      'quantite': int.tryParse(item['quantite']?.toString() ?? '') ?? 0,
+      'qualite': item['qualite'],
+      'recommandation': item['recommandation'],
+      'date': item['date'],
+    }).toList();
+
+    await _dbService.upsertQuestionnaire(
+      type: 'organisation_chantier_materiaux',
+      localiteId: activeLocaliteId,
+      dataMap: {'items': data},
     );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Checklist matériaux sauvegardée')));
   }
 
   @override

@@ -54,77 +54,47 @@ class CalculAvancementService {
 
       // Section 1 : Installation du chantier
       if (donnees['section1'] != null) {
-        if (donnees['section1']['acheve'] == true) {
+        final status = donnees['section1']['status'];
+        if (status == 'Achevé') {
           avancementTotal += bareme['sec1']!;
-        } else if (donnees['section1']['enCours'] == true) {
-          avancementTotal +=
-              bareme['sec1']! / 2; // Arbitrairement la moitié si en cours
+        } else if (status == 'En cours') {
+          avancementTotal += bareme['sec1']! / 2;
         }
       }
 
       // Section 2 : Implantation
       if (donnees['section2'] != null) {
-        if (donnees['section2']['fouillesConformes'] == true) {
+        final sec2 = donnees['section2'] as Map<String, dynamic>;
+        if (sec2['fouillesConformes'] == 'Oui') {
           avancementTotal += bareme['sec2']!;
         }
       }
 
       // Pour les autres sections basées sur des listes de "A priori" / "A posteriori"
-      // On considère la section complétée si les "A posteriori" sont tous à "Oui".
-      avancementTotal += _verifierSectionListe(
-        donnees['section3'],
-        bareme['sec3']!,
-      );
-      avancementTotal += _verifierSectionListe(
-        donnees['section4'],
-        bareme['sec4']!,
-      );
-      avancementTotal += _verifierSectionListe(
-        donnees['section5'],
-        bareme['sec5']!,
-      );
+      avancementTotal += _verifierSectionListe(donnees['section3'], bareme['sec3']!);
+      avancementTotal += _verifierSectionListe(donnees['section4'], bareme['sec4']!);
+      avancementTotal += _verifierSectionListe(donnees['section5'], bareme['sec5']!);
 
-      // Section 6 : Enduits (juste une liste)
-      avancementTotal += _verifierListeSimple(
-        donnees['section6'],
-        bareme['sec6']!,
-      );
+      // Section 6 : Enduits (objet avec sous-clef 'questions')
+      avancementTotal += _verifierListeSimple(donnees['section6']?['questions'], bareme['sec6']!);
 
       // Section 7 : Menuiserie
-      avancementTotal += _verifierSectionListe(
-        donnees['section7'],
-        bareme['sec7']!,
-      );
+      avancementTotal += _verifierSectionListe(donnees['section7'], bareme['sec7']!);
 
       // Section 8 : Plomberie
-      avancementTotal += _verifierSectionListe(
-        donnees['section8'],
-        bareme['sec8']!,
-      );
+      avancementTotal += _verifierSectionListe(donnees['section8'], bareme['sec8']!);
 
-      // Section 9 : Peinture (simple)
-      avancementTotal += _verifierListeSimple(
-        donnees['section9'],
-        bareme['sec9']!,
-      );
+      // Section 9 : Peinture
+      avancementTotal += _verifierListeSimple(donnees['section9']?['questions'], bareme['sec9']!);
 
-      // Section 10 : Revêtement (simple)
-      avancementTotal += _verifierListeSimple(
-        donnees['section10'],
-        bareme['sec10']!,
-      );
+      // Section 10 : Revêtement
+      avancementTotal += _verifierListeSimple(donnees['section10']?['questions'], bareme['sec10']!);
 
       // Section 11 : DLM
-      avancementTotal += _verifierSectionListe(
-        donnees['section11'],
-        bareme['sec11']!,
-      );
+      avancementTotal += _verifierSectionListe(donnees['section11'], bareme['sec11']!);
 
-      // Section 12 : Garde-fous (simple)
-      avancementTotal += _verifierListeSimple(
-        donnees['section12'],
-        bareme['sec12']!,
-      );
+      // Section 12 : Garde-fous
+      avancementTotal += _verifierListeSimple(donnees['section12']?['questions'], bareme['sec12']!);
     } catch (e) {
       print('Erreur calcul avancement: $e');
     }
@@ -133,15 +103,15 @@ class CalculAvancementService {
   }
 
   static double _verifierSectionListe(
-    Map<String, dynamic>? sectionData,
+    dynamic sectionData,
     double pointsMaximum,
   ) {
-    if (sectionData == null || sectionData['aposteriori'] == null) {
+    if (sectionData == null || sectionData is! Map || sectionData['aposteriori'] == null) {
       return 0.0;
     }
 
-    List<dynamic> aposteriori = sectionData['aposteriori'];
-    if (aposteriori.isEmpty) {
+    dynamic aposteriori = sectionData['aposteriori'];
+    if (aposteriori is! List || aposteriori.isEmpty) {
       return 0.0;
     }
 
@@ -159,10 +129,10 @@ class CalculAvancementService {
   }
 
   static double _verifierListeSimple(
-    List<dynamic>? sectionList,
+    dynamic sectionList,
     double pointsMaximum,
   ) {
-    if (sectionList == null || sectionList.isEmpty) {
+    if (sectionList == null || sectionList is! List || sectionList.isEmpty) {
       return 0.0;
     }
 
@@ -170,7 +140,7 @@ class CalculAvancementService {
     int reponsesPositives = 0;
 
     for (var q in sectionList) {
-      if (q['response'] == 'Oui' || q['response'] == true) {
+      if (q is Map && (q['response'] == 'Oui' || q['response'] == true)) {
         reponsesPositives++;
       }
     }

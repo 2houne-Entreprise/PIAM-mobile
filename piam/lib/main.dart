@@ -32,6 +32,9 @@ import 'screens/ControleTravaux/niveau1_donnees_generales.dart';
 import 'screens/ControleTravaux/niveau2_organisation_chantier.dart';
 import 'screens/ControleTravaux/niveau3_controle_travaux.dart';
 import 'screens/ControleTravaux/niveau4_reception.dart';
+import 'screens/rapports/dashboard_rapports.dart';
+import 'screens/rapports/rapport_suivi_screen.dart';
+import 'screens/rapports/rapport_synthese_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -160,6 +163,15 @@ class MyApp extends StatelessWidget {
             case '/formulaires/cloture':
               final id = settings.arguments as String? ?? 'new';
               builder = (context) => CloturePage(formulaireId: id);
+              break;
+            case '/rapports_dashboard':
+              builder = (context) => const DashboardRapportsScreen();
+              break;
+            case '/rapport_suivi':
+              builder = (context) => const RapportSuiviScreen();
+              break;
+            case '/rapport_synthese':
+              builder = (context) => const RapportSyntheseScreen();
               break;
             case '/formulaires/conformite':
               final id = settings.arguments as String? ?? 'new';
