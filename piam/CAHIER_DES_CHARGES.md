@@ -18,10 +18,21 @@
 - Suivi ATPC (Analyse Technique du Projet de Chaîne)
 - Rapports d'avancement
 
+
 ### Plateforme cible :
 - Flutter (cross-platform)
 - Mobile first
-- Fonctionnement offline-first avec sync
+- Fonctionnement offline-first avec synchronisation différée
+
+#### 📦 Stockage des données terrain
+
+- Toutes les données saisies sont enregistrées localement dans une base SQLite (`piam.db`), dans la table unique `questionnaires`.
+- Les données de chaque formulaire sont stockées au format JSON dans la colonne `data_json`.
+- Unicité garantie par la contrainte `(type, localite_id)` : un seul enregistrement par type de formulaire et par localité.
+- Synchronisation automatique dès qu'une connexion internet est disponible (champ `sync_status`).
+- Sur le web, stockage équivalent via SharedPreferences (clé `piam_questionnaires`).
+
+**Exigence** : L'application doit fonctionner en mode hors-ligne complet, garantir la persistance des données, et assurer la synchronisation différée sans perte.
 
 ---
 

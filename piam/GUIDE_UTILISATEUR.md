@@ -16,6 +16,17 @@
 
 L'application **PIAM** est conçue pour faciliter le contrôle qualité des chantiers de construction de latrines publiques. Elle guide les agents de contrôle à travers un processus structuré en quatre niveaux pour assurer la qualité, la conformité et la réception des ouvrages.
 
+---
+
+## 🔒 Où sont stockées vos données ?
+
+Toutes les données saisies dans l'application sont **enregistrées localement sur votre appareil** (même sans connexion internet) dans une base de données sécurisée. Chaque formulaire rempli est sauvegardé dans la mémoire de l'application et sera automatiquement synchronisé avec le serveur dès qu'une connexion internet est disponible.
+
+- **Mode hors-ligne** : Vous pouvez utiliser l'application partout, même sans réseau. Rien n'est perdu !
+- **Récupération automatique** : Si vous fermez l'application ou redémarrez votre téléphone, vos données restent disponibles.
+- **Synchronisation** : Dès qu'une connexion est détectée, toutes les données non envoyées sont transférées automatiquement.
+
+> **Astuce** : Vous pouvez retrouver et modifier vos formulaires tant qu'ils ne sont pas synchronisés.
 ### Objectifs de l'application
 - ✅ Collecte systématique des données de chantier
 - ✅ Évaluation de l'organisation et de la sécurité
@@ -191,15 +202,16 @@ Le Niveau 4 permet d'enregistrer la fin du cycle de contrôle avec la réception
 ## Synchronisation et sauvegarde
 
 ### Sauvegarde automatique
-- ✅ **Locale** : SQLite database
-- 🔄 **Cloud** : Synchronisation automatique (lors de connexion internet)
-- 📱 **Export** : PDF ou Excel
 
 ### Fréquence recommandée
-- **Quotidienne** : Sauvegarde des données saisies
-- **Hebdomadaire** : Export des rapports
-- **Fin de mission** : Archive complète
 
+L'application PIAM fonctionne en mode "offline-first" :
+
+- **Enregistrement local** : Chaque fois que vous validez un formulaire, il est stocké dans la base de données locale de l'application (même principe sur Android, iOS ou Web).
+- **Synchronisation automatique** : Dès qu'une connexion internet est disponible, l'application tente d'envoyer les nouveaux formulaires vers le serveur central.
+- **Statut de synchronisation** : Un indicateur vous montre si vos données sont "enregistrées localement" ou "synchronisées".
+
+Vous n'avez rien à faire : la sauvegarde et la synchronisation sont automatiques et transparentes.
 ## Dépannage
 
 ### Problèmes courants

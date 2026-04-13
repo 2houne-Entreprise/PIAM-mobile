@@ -1,3 +1,8 @@
+### Où sont stockées mes données ?
+Toutes les données saisies sont enregistrées localement sur votre appareil (base SQLite, table `questionnaires`, colonne `data_json`). Vous pouvez utiliser l'application sans connexion internet. La synchronisation avec le serveur est automatique dès qu'une connexion est disponible.
+
+### Que se passe-t-il si je perds la connexion ?
+Vous pouvez continuer à remplir et sauvegarder tous les formulaires. Rien n'est perdu : les données restent sur votre appareil et seront envoyées automatiquement dès que la connexion revient.
 # ❓ FAQ - Application PIAM
 
 ## Questions générales

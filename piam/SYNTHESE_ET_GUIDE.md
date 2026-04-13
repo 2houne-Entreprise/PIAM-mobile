@@ -24,6 +24,17 @@ Tu as maintenant **TOUS** les documents nécessaires pour reconstruire ton appli
 
 ## 📚 CONTENU DÉTAILLÉ DES FICHIERS
 
+
+---
+
+## 📦 Stockage des données (synthèse)
+
+Toutes les données saisies dans l'application sont enregistrées dans la base locale SQLite (`piam.db`), table unique `questionnaires`, colonne `data_json` (JSON). Unicité garantie par `(type, localite_id)`. Synchronisation automatique via le champ `sync_status`.
+
+**Web** : stockage équivalent via SharedPreferences.
+
+---
+
 ### 1️⃣ CAHIER_DES_CHARGES.md (87 sections)
 
 **Contient :**

@@ -19,8 +19,24 @@ BLoC/State Management Layer
 Domain Layer (UseCases)
     ↓ (dépend de)
 Data Layer (Repositories & DataSources)
-    ↓ (dépend de)
+   ↓ (dépend de)
 External Services (API, SQLite, GPS, etc.)
+
+---
+
+## 📦 Data Layer : Stockage unifié
+
+Toutes les données de formulaires sont stockées dans la table unique `questionnaires` de la base SQLite locale (`piam.db`).
+
+- **Colonne principale** : `data_json` (JSON sérialisé)
+- **Unicité** : `(type, localite_id)`
+- **Synchronisation** : champ `sync_status` pour suivi offline/online
+- **Web** : stockage équivalent via SharedPreferences
+
+**Flux** :
+1. Saisie → JSON → `questionnaires.data_json`
+2. Une seule entrée par (type, localite_id)
+3. Synchronisation automatique dès que possible
 ```
 
 ### 1.2 Patterns à utiliser

@@ -5,7 +5,12 @@
 **Session 2 Completion**: Foundation + Authentication + UI/State Management Complete
 **Project Status**: Ready for Data Layer Implementation
 
-## What's Been Built
+
+## Robustesse du stockage et synchronisation
+
+Toutes les données saisies sont stockées localement dans la base SQLite (`piam.db`), table `questionnaires`, colonne `data_json` (JSON). Unicité par `(type, localite_id)`. Synchronisation automatique dès qu'une connexion internet est disponible.
+
+---
 
 ### 1. Authentication System ✅
 - **AuthBLoC** with 5 events (Login, Logout, RefreshToken, VerifyDateTime, CheckAuthStatus)

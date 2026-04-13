@@ -15,6 +15,18 @@
 - **VS Code** : Avec extensions Flutter/Dart
 - **Git** : 2.30+ pour le contrôle de version
 
+
+## Stockage local et base de données
+
+L'application PIAM ne nécessite aucune configuration manuelle pour la base de données locale. Toutes les données saisies sont automatiquement enregistrées dans une base SQLite locale (`piam.db`) dans la table `questionnaires` (colonne `data_json`).
+
+- **Android/iOS** : Utilisation de SQLite (via sqflite)
+- **Web** : Utilisation de SharedPreferences (clé `piam_questionnaires`)
+
+Le stockage est sécurisé, offline-first, et la synchronisation est automatique dès qu'une connexion internet est disponible.
+
+---
+
 ## Installation de Flutter
 
 ### Windows

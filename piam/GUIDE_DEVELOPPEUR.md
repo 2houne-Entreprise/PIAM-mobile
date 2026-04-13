@@ -115,40 +115,59 @@ Chaque niveau stocke un JSON structuré :
 
 ## Services
 
-### SQLiteService
-Gestion de la base de données locale :
 
-```dart
-class SQLiteService {
-  static final SQLiteService _instance = SQLiteService._internal();
-  Database? _db;
+### DatabaseService (Stockage des données)
+Toutes les données saisies dans les formulaires sont stockées dans la base SQLite locale `piam.db`, dans la table unique `questionnaires`.
 
-  // Singleton pattern
-  factory SQLiteService() => _instance;
+**Schéma principal :**
+- Table : `questionnaires`
+- Colonne : `data_json` (contient toutes les données du formulaire au format JSON)
+- Clés :
+  - `type` (type du formulaire, ex : 'programmation_travaux')
+  - `localite_id` (identifiant de la localité)
+  - Contrainte d'unicité `(type, localite_id)`
+- Autres colonnes : `date_creation`, `date_modification`, `user_id`, `sync_status`, `photo_path`
 
-  // Initialisation
-  Future<Database> get database async {
-    if (_db != null) return _db!;
-    _db = await _initDB();
-    return _db!;
-  }
-
-  // Création des tables
-  Future<Database> _initDB() async {
-    String path = join(await getDatabasesPath(), 'piam.db');
-    return await openDatabase(
-      path,
-      version: 1,
-      onCreate: _createTables,
-    );
-  }
-
-  // CRUD operations
-  Future<int> insert(String table, Map<String, dynamic> data) async {
-    final db = await database;
-    return await db.insert(table, data);
-  }
+**Exemple d'enregistrement :**
+```json
+{
+  "type": "programmation_travaux",
+  "localite_id": 12,
+  "data_json": "{\"dateActivite\":\"2026-04-15\",\"nbTravaux\":5,\"autre\":\"Travaux de voirie\"}",
+  "date_creation": "2026-04-15T10:00:00Z",
+  "date_modification": "2026-04-15T10:00:00Z",
+  "user_id": "agent_01",
+  "sync_status": "local"
 }
+```
+
+**Mécanisme d'upsert** :
+L'appel à `DatabaseService().upsertQuestionnaire(...)` permet d'insérer ou de mettre à jour un formulaire pour une localité donnée (pas de doublon possible).
+
+**Synchronisation** :
+Le champ `sync_status` permet de suivre les enregistrements à synchroniser avec le serveur. Le service `SyncService` gère la détection de connexion et la synchronisation différée.
+
+**Fonctionnement Web** :
+Sur le web, les données sont stockées dans `SharedPreferences` (clé `piam_questionnaires`) avec la même structure logique.
+
+**Résumé du flux** :
+1. L'utilisateur saisit un formulaire
+2. Les données sont converties en JSON et stockées dans `questionnaires.data_json`
+3. Une seule entrée par (type, localite_id)
+4. Synchronisation automatique dès que possible
+
+**Exemple d'utilisation dans un formulaire :**
+```dart
+await DatabaseService().upsertQuestionnaire(
+  type: 'programmation_travaux',
+  localiteId: 12,
+  dataMap: {
+    'dateActivite': '2026-04-15',
+    'nbTravaux': 5,
+    'autre': 'Travaux de voirie',
+  },
+  userId: 'agent_01',
+);
 ```
 
 ### GPSService

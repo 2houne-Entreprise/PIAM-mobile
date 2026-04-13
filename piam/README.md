@@ -23,7 +23,14 @@ L'application facilite le contrôle qualité des latrines publiques en permettan
 - La validation des travaux selon des critères prédéfinis
 - Le stockage sécurisé des données de contrôle
 
-## 🏗️ Architecture de l'application
+
+## 📦 Stockage des données
+
+Toutes les données saisies dans l'application sont enregistrées localement dans la base SQLite (`piam.db`), table unique `questionnaires`, colonne `data_json` (JSON). Unicité garantie par `(type, localite_id)`. Synchronisation automatique dès qu'une connexion internet est disponible.
+
+Sur le web, stockage équivalent via SharedPreferences.
+
+---
 
 ### Structure des fichiers
 ```
