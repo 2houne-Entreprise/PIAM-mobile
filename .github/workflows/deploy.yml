@@ -19,13 +19,18 @@ jobs:
         with:
           flutter-version: '3.x'
 
-      - run: flutter pub get
-      - run: flutter build web --release --base-href "/PIAM-mobile/"
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: piam
+
+      - name: Build web
+        run: flutter build web --release --base-href "/PIAM-mobile/"
+        working-directory: piam
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build/web
+          path: piam/build/web
 
   deploy:
     needs: build
