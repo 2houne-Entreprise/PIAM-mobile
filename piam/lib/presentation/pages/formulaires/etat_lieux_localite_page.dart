@@ -3,6 +3,8 @@ import 'package:piam/config/app_theme.dart';
 import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/form_auto_sync_mixin.dart';
+
 
 /// Formulaire — État des Lieux Localité
 ///
@@ -20,7 +22,7 @@ class EtatLieuxLocalitePage extends StatefulWidget {
   State<EtatLieuxLocalitePage> createState() => _EtatLieuxLocalitePageState();
 }
 
-class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> {
+class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> with FormAutoSyncMixin {
   // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
@@ -179,7 +181,7 @@ class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> {
         'observations': _observationsController.text,
       };
 
-      await DatabaseService().upsertQuestionnaire(
+      await saveAndSync(
         type: 'etat_lieux_localite',
         localiteId: _localiteId,
         dataMap: dataMap,

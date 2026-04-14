@@ -3,6 +3,8 @@ import 'package:piam/config/app_theme.dart';
 import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/form_auto_sync_mixin.dart';
+
 
 /// Formulaire — Dernier Suivi Localité
 ///
@@ -24,7 +26,7 @@ class DernierSuiviLocalitePage extends StatefulWidget {
 }
 
 class _DernierSuiviLocalitePageState
-    extends State<DernierSuiviLocalitePage> {
+    extends State<DernierSuiviLocalitePage> with FormAutoSyncMixin {
   // ── Clés et état ─────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
@@ -199,7 +201,7 @@ class _DernierSuiviLocalitePageState
       };
 
       // 3. Sauvegarder (ou mettre à jour) dans SQLite
-      await db.upsertQuestionnaire(
+      await saveAndSync(
         type: 'dernier_suivi_localite',
         localiteId: _localiteId,
         dataMap: dataMap,

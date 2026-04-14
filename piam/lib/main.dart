@@ -36,10 +36,33 @@ import 'screens/rapports/dashboard_rapports.dart';
 import 'screens/rapports/rapport_suivi_screen.dart';
 import 'screens/rapports/rapport_synthese_screen.dart';
 
+import 'services/api_client.dart';
+import 'services/sync_service.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await bootstrap();
-  runApp(const MyApp());
+
+  // ── Initialisation API ────────────────────────────────────────────────────
+  ApiClient().init();
+
+  // ── Initialisation Sync Service ───────────────────────────────────────────
+  await SyncService().init();
+
+  runApp(
+    MultiBlocProvider(
+      providers: [
+        BlocProvider<AuthBloc>(
+          create: (context) =>
+              GetIt.instance<AuthBloc>()..add(const CheckAuthStatusEvent()),
+        ),
+        BlocProvider<FormulaireBloc>(
+          create: (context) => GetIt.instance<FormulaireBloc>(),
+        ),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -47,147 +70,132 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final getIt = GetIt.instance;
-
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider<AuthBloc>(
-          create: (context) =>
-              getIt<AuthBloc>()..add(const CheckAuthStatusEvent()),
-        ),
-        BlocProvider<FormulaireBloc>(
-          create: (context) => getIt<FormulaireBloc>(),
-        ),
-      ],
-      child: MaterialApp(
-        title: 'PIAM',
-        theme: AppTheme.lightTheme(),
-        debugShowCheckedModeBanner: false,
-        home: BlocBuilder<AuthBloc, AuthState>(
-          builder: (context, state) {
-            if (state is AuthSuccess) {
-              // Redirige vers la nouvelle page d'accueil avec menu bas
-              return HomePage(
-                user: state.utilisateur,
-                localite: Localite.empty(),
-              );
-            }
-            if (state is AuthLoading || state is AuthInitial) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
-            }
-            return const LoginPage();
-          },
-        ),
-        onGenerateRoute: (settings) {
-          WidgetBuilder builder;
-
-          switch (settings.name) {
-            case '/niveau1':
-              builder = (context) => const Niveau1DonneesGenerales();
-              break;
-            case '/niveau2':
-              builder = (context) => const Niveau2OrganisationChantier();
-              break;
-            case '/niveau3':
-              builder = (context) => const Niveau3ControleTravaux();
-              break;
-            case '/niveau4':
-              builder = (context) => const Niveau4Reception();
-              break;
-            case '/parametrage':
-              builder = (context) => const ParametrageInitialScreen();
-              break;
-            case '/certification_fdal':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => ConformitePage(formulaireId: id);
-              break;
-            case '/formulaires/etat_lieux_localite':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => EtatLieuxLocalitePage(formulaireId: id);
-              break;
-            case '/formulaires/etat_lieux_menage':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => EtatLieuxMenagePage(formulaireId: id);
-              break;
-            case '/formulaires/dernier_suivi_localite':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => DernierSuiviLocalitePage(formulaireId: id);
-              break;
-            case '/formulaires/dernier_suivi_menage':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => DernierSuiviMenagePage(formulaireId: id);
-              break;
-            case '/formulaires/inventaire':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => InventairePage(formulaireId: id);
-              break;
-            case '/formulaires/programmation_travaux':
-              builder = (context) => const ParametrageScreen();
-              break;
-
-            case '/dashboard':
-              // Normally handled by HomePage
-              builder = (context) =>
-                  Scaffold(body: Center(child: Text('Dashboard')));
-              break;
-            case '/formulaires/declenchement':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => DeeclenchementPage(formulaireId: id);
-              break;
-            case '/formulaires/identification':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => IdentificationPage(formulaireId: id);
-              break;
-            case '/formulaires/organisation':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => OrganisationPage(formulaireId: id);
-              break;
-            case '/formulaires/sites':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => SitesPage(formulaireId: id);
-              break;
-            case '/formulaires/equipes':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => EquipesPage(formulaireId: id);
-              break;
-            case '/formulaires/calendrier':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => CalendrierPage(formulaireId: id);
-              break;
-            case '/formulaires/rapports':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => RapportsPage(formulaireId: id);
-              break;
-            case '/formulaires/cloture':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => CloturePage(formulaireId: id);
-              break;
-            case '/rapports_dashboard':
-              builder = (context) => const DashboardRapportsScreen();
-              break;
-            case '/rapport_suivi':
-              builder = (context) => const RapportSuiviScreen();
-              break;
-            case '/rapport_synthese':
-              builder = (context) => const RapportSyntheseScreen();
-              break;
-            case '/formulaires/conformite':
-              final id = settings.arguments as String? ?? 'new';
-              builder = (context) => ConformitePage(formulaireId: id);
-              break;
-            default:
-              builder = (context) =>
-                  Scaffold(body: Center(child: Text('Route introuvable')));
+    return MaterialApp(
+      title: 'PIAM',
+      theme: AppTheme.lightTheme(),
+      debugShowCheckedModeBanner: false,
+      home: BlocBuilder<AuthBloc, AuthState>(
+        builder: (context, state) {
+          if (state is AuthSuccess) {
+            return HomePage(
+              user: state.utilisateur,
+              localite: Localite.empty(),
+            );
           }
-
-          return MaterialPageRoute<dynamic>(
-            builder: builder,
-            settings: settings,
-          );
+          if (state is AuthLoading || state is AuthInitial) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          return const LoginPage();
         },
       ),
+      onGenerateRoute: (settings) {
+        WidgetBuilder builder;
+
+        switch (settings.name) {
+          case '/niveau1':
+            builder = (context) => const Niveau1DonneesGenerales();
+            break;
+          case '/niveau2':
+            builder = (context) => const Niveau2OrganisationChantier();
+            break;
+          case '/niveau3':
+            builder = (context) => const Niveau3ControleTravaux();
+            break;
+          case '/niveau4':
+            builder = (context) => const Niveau4Reception();
+            break;
+          case '/parametrage':
+            builder = (context) => const ParametrageInitialScreen();
+            break;
+          case '/certification_fdal':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => ConformitePage(formulaireId: id);
+            break;
+          case '/formulaires/etat_lieux_localite':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => EtatLieuxLocalitePage(formulaireId: id);
+            break;
+          case '/formulaires/etat_lieux_menage':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => EtatLieuxMenagePage(formulaireId: id);
+            break;
+          case '/formulaires/dernier_suivi_localite':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => DernierSuiviLocalitePage(formulaireId: id);
+            break;
+          case '/formulaires/dernier_suivi_menage':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => DernierSuiviMenagePage(formulaireId: id);
+            break;
+          case '/formulaires/inventaire':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => InventairePage(formulaireId: id);
+            break;
+          case '/formulaires/programmation_travaux':
+            builder = (context) => const ParametrageScreen();
+            break;
+
+          case '/dashboard':
+            builder = (context) =>
+                Scaffold(body: Center(child: Text('Dashboard')));
+            break;
+          case '/formulaires/declenchement':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => DeeclenchementPage(formulaireId: id);
+            break;
+          case '/formulaires/identification':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => IdentificationPage(formulaireId: id);
+            break;
+          case '/formulaires/organisation':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => OrganisationPage(formulaireId: id);
+            break;
+          case '/formulaires/sites':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => SitesPage(formulaireId: id);
+            break;
+          case '/formulaires/equipes':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => EquipesPage(formulaireId: id);
+            break;
+          case '/formulaires/calendrier':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => CalendrierPage(formulaireId: id);
+            break;
+          case '/formulaires/rapports':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => RapportsPage(formulaireId: id);
+            break;
+          case '/formulaires/cloture':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => CloturePage(formulaireId: id);
+            break;
+          case '/rapports_dashboard':
+            builder = (context) => const DashboardRapportsScreen();
+            break;
+          case '/rapport_suivi':
+            builder = (context) => const RapportSuiviScreen();
+            break;
+          case '/rapport_synthese':
+            builder = (context) => const RapportSyntheseScreen();
+            break;
+          case '/formulaires/conformite':
+            final id = settings.arguments as String? ?? 'new';
+            builder = (context) => ConformitePage(formulaireId: id);
+            break;
+          default:
+            builder = (context) =>
+                Scaffold(body: Center(child: Text('Route introuvable')));
+        }
+
+        return MaterialPageRoute<dynamic>(
+          builder: builder,
+          settings: settings,
+        );
+      },
     );
   }
 }

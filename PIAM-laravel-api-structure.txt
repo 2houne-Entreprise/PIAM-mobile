@@ -1,0 +1,56 @@
+// Structure des contrôleurs Laravel pour l'API PIAM
+
+// 1. AuthController.php
+// - login()
+// - logout()
+// - user()
+
+// 2. UserController.php
+// - index() : liste des utilisateurs
+// - store() : créer utilisateur
+// - show($id) : afficher utilisateur
+// - update($id) : modifier utilisateur
+// - destroy($id) : supprimer utilisateur
+
+// 3. LocationController.php
+// - index(), store(), show(), update(), destroy()
+
+// 4. OperationController.php
+// - index(), store(), show(), update(), destroy()
+
+// 5. FormController.php
+// - index() : liste des formulaires
+// - store() : créer formulaire
+// - show($id) : afficher formulaire
+// - update($id) : modifier formulaire (sauvegarde auto)
+// - destroy($id) : supprimer formulaire
+// - dashboardStats() : compteurs par statut
+
+// 6. ResponseController.php
+// - index(), store(), show(), update(), destroy()
+
+// 7. PhotoController.php
+// - index(), store(), show(), update(), destroy()
+
+// 8. API Routes (routes/api.php)
+// - Auth routes (login, logout, user)
+// - CRUD routes pour chaque ressource
+// - Route dashboard (GET /dashboard-stats)
+
+// 9. Authentification : Laravel Sanctum
+// - Protéger les routes sensibles avec middleware 'auth:sanctum'
+
+// 10. Exemples de requêtes Postman (login, CRUD, dashboard)
+
+// Pour chaque contrôleur, utiliser les Resource Controllers Laravel
+// Ex : php artisan make:controller UserController --api
+
+// Pour la sauvegarde automatique :
+// - Le endpoint update() de FormController est appelé à chaque modification de champ
+
+// Pour le dashboard :
+// - FormController@dashboardStats retourne le nombre de formulaires par statut
+
+// Pour lier le frontend Flutter :
+// - Fournir l'URL de l'API (ex : http://localhost:8000/api)
+// - Utiliser les endpoints REST depuis Flutter

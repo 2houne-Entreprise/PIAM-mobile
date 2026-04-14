@@ -3,6 +3,8 @@ import 'package:piam/config/app_theme.dart';
 import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/form_auto_sync_mixin.dart';
+
 
 /// Formulaire — Certification FDAL / ATPC (Conformité)
 /// 
@@ -16,7 +18,7 @@ class ConformitePage extends StatefulWidget {
   State<ConformitePage> createState() => _ConformitePageState();
 }
 
-class _ConformitePageState extends State<ConformitePage> {
+class _ConformitePageState extends State<ConformitePage> with FormAutoSyncMixin {
   // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
@@ -93,7 +95,7 @@ class _ConformitePageState extends State<ConformitePage> {
         'remarqueNon': _remarqueNonController.text,
       };
 
-      await DatabaseService().upsertQuestionnaire(
+      await saveAndSync(
         type: 'conformite_fdal',
         localiteId: _localiteId,
         dataMap: dataMap,

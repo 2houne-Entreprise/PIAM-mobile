@@ -3,6 +3,11 @@ import 'package:piam/config/app_theme.dart';
 import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/form_auto_sync_mixin.dart';
+import 'package:piam/services/image_handler_service.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+
 
 /// Formulaire — Dernier Suivi Ménage
 ///
@@ -18,11 +23,13 @@ class DernierSuiviMenagePage extends StatefulWidget {
   State<DernierSuiviMenagePage> createState() => _DernierSuiviMenagePageState();
 }
 
-class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> {
+class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> with FormAutoSyncMixin {
   // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
+  final _imageService = ImageHandlerService();
   bool _isLoading = false;
   bool _isSaved = false;
+  String? _syncStatus; // 'draft', 'completed', 'synced'
 
   // Données de localisation
   int? _localiteId;
@@ -42,6 +49,14 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> {
   String? _typeDlm;
 
   // ── Cycle de vie ──────────────────────────────────────────────────────────
+
+  @override
+  void initState() {
+    super.initState();
+    onSyncStatusChanged = (status) {
+      if (mounted) setState(() => _syncStatus = status);
+    };
+  }
 
   @override
   void dispose() {
@@ -75,13 +90,41 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> {
       _photoPath = data['photo'] as String?;
       _dlmExiste = data['dlm_existe'] as bool?;
       _typeDlm = data['type_dlm'] as String?;
-      _isSaved = true;
+      _syncStatus = data['_status'] as String?;
+      _isSaved = _syncStatus == 'completed' || _syncStatus == 'synced';
     });
     _nbMenagesPartageLatrineCtr.text =
         data['nb_menages_partage_latrine']?.toString() ?? '';
   }
 
   // ── Enregistrement ────────────────────────────────────────────────────────
+
+  Future<void> _takePhoto() async {
+    final String? path = await _imageService.takePhoto();
+    if (path != null) {
+      setState(() => _photoPath = path);
+    }
+  }
+
+  /// Déclenche la sauvegarde automatique du brouillon (debounced).
+  void _triggerAutoSave() {
+    onFieldChanged(
+      type: 'dernier_suivi_menage',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => {
+        'latrine_existe': _latrineExiste,
+        'ancienne_latrine_degradee': _latrineExiste == false ? _ancienneLatrineDegradee : null,
+        'utilisation_latrine_voisin': _latrineExiste == false ? _utilisationLatrineVoisinNon : null,
+        'dal': _latrineExiste == false ? _dalNon : null,
+        'latrine_amelioree': _latrineExiste == true ? _latrineAmelioree : null,
+        'nb_menages_partage_latrine': _latrineExiste == true ? int.tryParse(_nbMenagesPartageLatrineCtr.text) : null,
+        'photo': _latrineExiste == true ? _photoPath : null,
+        'dlm_existe': _dlmExiste,
+        'type_dlm': _dlmExiste == true ? _typeDlm : null,
+      },
+    );
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
@@ -106,7 +149,7 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> {
         'type_dlm': _dlmExiste == true ? _typeDlm : null,
       };
 
-      await DatabaseService().upsertQuestionnaire(
+      await saveAndSync(
         type: 'dernier_suivi_menage',
         localiteId: _localiteId,
         dataMap: dataMap,
@@ -149,13 +192,22 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> {
       appBar: AppBar(
         title: const Text('Dernier Suivi Ménage'),
         actions: [
+          if (_syncStatus == 'draft')
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: AppStatusBadge(
+                label: 'Brouillon',
+                color: Colors.orange,
+                icon: Icons.edit_note,
+              ),
+            ),
           if (_isSaved)
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: AppStatusBadge(
-                label: 'Enregistré',
+                label: _syncStatus == 'synced' ? 'Synchronisé' : 'Enregistré',
                 color: AppTheme.successColor,
-                icon: Icons.check_circle_outline,
+                icon: _syncStatus == 'synced' ? Icons.cloud_done : Icons.check_circle_outline,
               ),
             ),
         ],
@@ -183,7 +235,10 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> {
                         value: true,
                         groupValue: _latrineExiste,
                         activeColor: AppTheme.successColor,
-                        onChanged: (v) => setState(() => _latrineExiste = v),
+                        onChanged: (v) => setState(() {
+                          _latrineExiste = v;
+                          _triggerAutoSave();
+                        }),
                       ),
                     ),
                     Expanded(
@@ -192,7 +247,10 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> {
                         value: false,
                         groupValue: _latrineExiste,
                         activeColor: AppTheme.errorColor,
-                        onChanged: (v) => setState(() => _latrineExiste = v),
+                        onChanged: (v) => setState(() {
+                          _latrineExiste = v;
+                          _triggerAutoSave();
+                        }),
                       ),
                     ),
                   ],
@@ -206,22 +264,28 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> {
                         const Text('Ancienne latrine dégradée / effondrée'),
                     value: _ancienneLatrineDegradee,
                     activeColor: AppTheme.primaryColor,
-                    onChanged: (v) =>
-                        setState(() => _ancienneLatrineDegradee = v ?? false),
+                    onChanged: (v) => setState(() {
+                      _ancienneLatrineDegradee = v ?? false;
+                      _triggerAutoSave();
+                    }),
                   ),
                   CheckboxListTile(
                     title: const Text('Utilise la latrine d\'un voisin'),
                     value: _utilisationLatrineVoisinNon,
                     activeColor: AppTheme.primaryColor,
-                    onChanged: (v) => setState(
-                        () => _utilisationLatrineVoisinNon = v ?? false),
+                    onChanged: (v) => setState(() {
+                      _utilisationLatrineVoisinNon = v ?? false;
+                      _triggerAutoSave();
+                    }),
                   ),
                   CheckboxListTile(
                     title: const Text('Défécation à l\'air libre (DAL)'),
                     value: _dalNon,
                     activeColor: AppTheme.primaryColor,
-                    onChanged: (v) =>
-                        setState(() => _dalNon = v ?? false),
+                    onChanged: (v) => setState(() {
+                      _dalNon = v ?? false;
+                      _triggerAutoSave();
+                    }),
                   ),
                 ],
 
@@ -232,14 +296,27 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> {
                     title: const Text('Latrine améliorée'),
                     value: _latrineAmelioree,
                     activeColor: AppTheme.successColor,
-                    onChanged: (v) =>
-                        setState(() => _latrineAmelioree = v ?? false),
+                    onChanged: (v) => setState(() {
+                      _latrineAmelioree = v ?? false;
+                      _triggerAutoSave();
+                    }),
                   ),
                   AppNumberField(
                     label: 'Nombre de ménages partageant la latrine',
                     controller: _nbMenagesPartageLatrineCtr,
+                    onChanged: (v) => _triggerAutoSave(),
                   ),
-                  // Bouton photo
+                  // Photo (professionnelle)
+                  if (_photoPath != null) ...[
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: kIsWeb 
+                        ? Image.network(_photoPath!, height: 180, width: double.infinity, fit: BoxFit.cover)
+                        : Image.file(File(_photoPath!), height: 180, width: double.infinity, fit: BoxFit.cover),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   OutlinedButton.icon(
                     icon: Icon(
                       _photoPath != null ? Icons.check_circle : Icons.camera_alt,
@@ -248,12 +325,9 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> {
                           : AppTheme.primaryColor,
                     ),
                     label: Text(
-                      _photoPath != null ? 'Photo prise ✓' : 'Prendre une photo',
+                      _photoPath != null ? 'Changer la photo' : 'Prendre une photo',
                     ),
-                    onPressed: () {
-                      // TODO: Intégrer image_picker
-                      setState(() => _photoPath = 'photo_placeholder.jpg');
-                    },
+                    onPressed: _takePhoto,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: _photoPath != null
                           ? AppTheme.successColor
@@ -284,7 +358,10 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> {
                         value: true,
                         groupValue: _dlmExiste,
                         activeColor: AppTheme.successColor,
-                        onChanged: (v) => setState(() => _dlmExiste = v),
+                        onChanged: (v) => setState(() {
+                          _dlmExiste = v;
+                          _triggerAutoSave();
+                        }),
                       ),
                     ),
                     Expanded(
@@ -293,7 +370,10 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> {
                         value: false,
                         groupValue: _dlmExiste,
                         activeColor: AppTheme.errorColor,
-                        onChanged: (v) => setState(() => _dlmExiste = v),
+                        onChanged: (v) => setState(() {
+                          _dlmExiste = v;
+                          _triggerAutoSave();
+                        }),
                       ),
                     ),
                   ],
@@ -310,7 +390,10 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> {
                           value: 'eau seule', child: Text('Eau seule')),
                       DropdownMenuItem(child: Text('Aucun'), value: 'aucun'),
                     ],
-                    onChanged: (v) => setState(() => _typeDlm = v),
+                    onChanged: (v) => setState(() {
+                      _typeDlm = v;
+                      _triggerAutoSave();
+                    }),
                   ),
               ],
             ),

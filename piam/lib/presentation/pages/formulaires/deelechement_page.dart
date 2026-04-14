@@ -4,11 +4,13 @@ import 'package:piam/config/app_theme.dart';
 import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/form_auto_sync_mixin.dart';
 
 /// Formulaire — Déclenchement
 ///
 /// Un seul champ : la date de l'activité.
 /// Pattern de persistance identique aux autres formulaires.
+/// Utilise [FormAutoSyncMixin] pour la sauvegarde locale + sync API automatique.
 class DeeclenchementPage extends StatefulWidget {
   final String formulaireId;
 
@@ -19,7 +21,8 @@ class DeeclenchementPage extends StatefulWidget {
   State<DeeclenchementPage> createState() => _DeeclenchementPageState();
 }
 
-class _DeeclenchementPageState extends State<DeeclenchementPage> {
+class _DeeclenchementPageState extends State<DeeclenchementPage>
+    with FormAutoSyncMixin {
   // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   final _dateController = TextEditingController();
@@ -70,7 +73,8 @@ class _DeeclenchementPageState extends State<DeeclenchementPage> {
     setState(() => _isLoading = true);
 
     try {
-      await DatabaseService().upsertQuestionnaire(
+      // Sauvegarde locale + sync API automatique via le mixin
+      await saveAndSync(
         type: 'declenchement',
         localiteId: _localiteId,
         dataMap: {'date_activite': _dateController.text},

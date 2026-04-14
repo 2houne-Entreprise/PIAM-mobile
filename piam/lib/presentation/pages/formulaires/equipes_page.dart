@@ -3,6 +3,8 @@ import 'package:piam/config/app_theme.dart';
 import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/form_auto_sync_mixin.dart';
+
 
 /// Formulaire — Personnel et équipes sur site
 /// 
@@ -16,7 +18,7 @@ class EquipesPage extends StatefulWidget {
   State<EquipesPage> createState() => _EquipesPageState();
 }
 
-class _EquipesPageState extends State<EquipesPage> {
+class _EquipesPageState extends State<EquipesPage> with FormAutoSyncMixin {
   // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
@@ -120,7 +122,7 @@ class _EquipesPageState extends State<EquipesPage> {
         'membres': membresJson,
       };
 
-      await DatabaseService().upsertQuestionnaire(
+      await saveAndSync(
         type: 'equipes_personnel',
         localiteId: _localiteId,
         dataMap: dataMap,

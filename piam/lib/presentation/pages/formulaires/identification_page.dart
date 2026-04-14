@@ -4,6 +4,8 @@ import 'package:piam/config/app_theme.dart';
 import 'package:piam/data/reference_data.dart';
 import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/form_auto_sync_mixin.dart';
+
 
 /// Formulaire 2 — Identification du site
 ///
@@ -20,7 +22,7 @@ class IdentificationPage extends StatefulWidget {
   State<IdentificationPage> createState() => _IdentificationPageState();
 }
 
-class _IdentificationPageState extends State<IdentificationPage> {
+class _IdentificationPageState extends State<IdentificationPage> with FormAutoSyncMixin {
   // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
@@ -261,7 +263,7 @@ class _IdentificationPageState extends State<IdentificationPage> {
         'nbPotentiels': int.tryParse(_nbPotentielsController.text),
       };
 
-      await DatabaseService().upsertQuestionnaire(
+      await saveAndSync(
         type: 'identification',
         localiteId: _selectedLocaliteId,
         dataMap: dataMap,

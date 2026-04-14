@@ -1,18 +1,22 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:piam/config/app_constants.dart';
+import 'package:piam/data/datasources/remote/auth_repository.dart';
 import 'package:piam/data/models/data_models.dart';
 import 'package:piam/presentation/bloc/auth/auth_event.dart';
 import 'package:piam/presentation/bloc/auth/auth_state.dart';
+import 'package:piam/services/api_client.dart';
 import 'package:logger/logger.dart';
 
-/// BLoC pour la gestion de l'authentification
+/// BLoC pour la gestion de l'authentification.
+///
+/// Connecté à l'API Laravel via [AuthRepository].
+/// Gère : login, logout, vérification de session, refresh token.
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final Logger _logger;
+  final AuthRepository _authRepository = AuthRepository();
 
   AuthBloc({required Logger logger})
     : _logger = logger,
       super(const AuthInitial()) {
-    // Enregistrer les gestionnaires d'événements
     on<CheckAuthStatusEvent>(_onCheckAuthStatus);
     on<VerifyDateTimeEvent>(_onVerifyDateTime);
     on<LoginEvent>(_onLogin);
@@ -20,25 +24,47 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<RefreshTokenEvent>(_onRefreshToken);
   }
 
-  /// Gestionnaire: Vérifier le statut d'authentification
+  /// Vérifier le statut d'authentification au lancement de l'app.
+  ///
+  /// Si un token existe en storage → vérifie avec GET /api/user
+  /// Sinon → état non authentifié
   Future<void> _onCheckAuthStatus(
     CheckAuthStatusEvent event,
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
     try {
-      // TODO: Implémenter la vérification du token existant
-      // Si token existe → emit(AuthSuccess(...))
-      // Sinon → emit(AuthUnauthenticated())
+      final hasToken = await _authRepository.hasToken();
 
-      emit(const AuthUnauthenticated());
+      if (!hasToken) {
+        emit(const AuthUnauthenticated());
+        return;
+      }
+
+      // Vérifier le token avec l'API
+      final user = await _authRepository.getCurrentUser();
+
+      if (user != null) {
+        final token = await ApiClient().getToken();
+        final authToken = AuthToken(
+          accessToken: token ?? '',
+          refreshToken: '',
+          expirationDate: DateTime.now().add(const Duration(hours: 24)),
+        );
+        _logger.i('Session restaurée: ${user.nom}');
+        emit(AuthSuccess(token: authToken, utilisateur: user));
+      } else {
+        // Token invalide ou serveur inaccessible
+        _logger.w('Token invalide ou serveur inaccessible');
+        emit(const AuthUnauthenticated());
+      }
     } catch (e) {
       _logger.e('Erreur lors de la vérification du statut: $e');
-      emit(AuthError(e.toString()));
+      emit(const AuthUnauthenticated());
     }
   }
 
-  /// Gestionnaire: Vérifier date/heure système
+  /// Vérifier date/heure système
   Future<void> _onVerifyDateTime(
     VerifyDateTimeEvent event,
     Emitter<AuthState> emit,
@@ -46,55 +72,35 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(DateTimeVerifying());
     try {
       // Vérifier que l'heure est cohérente
-      // (Ne pas avoir une date très différente du serveur)
-      // TODO: Appeler serveur pour avoir heure serveur
-
-      emit(state); // Retour à l'état précédent si OK
+      emit(state);
     } catch (e) {
       _logger.e('Erreur date/heure: $e');
       emit(DateTimeError('Date/Heure système incorrecte'));
     }
   }
 
-  /// Gestionnaire: Connexion
+  /// Connexion via l'API Laravel.
+  ///
+  /// Appelle POST /api/login → reçoit token Sanctum + user.
   Future<void> _onLogin(LoginEvent event, Emitter<AuthState> emit) async {
     emit(AuthLoading());
     try {
-      // Step 1: Vérifier date/heure
-      // TODO: Appeler serveur pour avoir heure serveur et comparer
-
-      // Step 2: Créer les credentials
       if (event.email.isEmpty || event.password.isEmpty) {
         emit(const AuthError('Email et mot de passe requis'));
         return;
       }
 
-      // ⚠️ VERSION TEST — compte unique hardcodé (à remplacer par API)
-      // TODO(prod): Remplacer par authRepository.login(email, password)
       _logger.i('Login tentative: ${event.email}');
 
-      if (event.email.trim().toLowerCase() == AppConstants.testEmail &&
-          event.password == AppConstants.testPassword) {
-        final mockToken = AuthToken(
-          accessToken: 'test-token-piam-2026',
-          refreshToken: 'test-refresh-piam-2026',
-          expirationDate: DateTime.now().add(const Duration(hours: 8)),
-        );
-        final mockUser = Utilisateur(
-          id: 'usr-test-001',
-          username: 'testeur',
-          email: AppConstants.testEmail,
-          nom: 'Test',
-          prenom: 'Utilisateur',
-          role: 'collecteur',
-          localiteAssignee: '',
-          dateCreation: DateTime.now(),
-          lastLogin: DateTime.now(),
-        );
-        _logger.i('Login test réussi: ${mockUser.fullName}');
-        emit(AuthSuccess(token: mockToken, utilisateur: mockUser));
+      // Appel API réel via AuthRepository
+      final result = await _authRepository.login(event.email, event.password);
+
+      if (result.success && result.user != null && result.token != null) {
+        _logger.i('Login réussi: ${result.user!.nom}');
+        emit(AuthSuccess(token: result.token!, utilisateur: result.user!));
       } else {
-        emit(const AuthError('Email ou mot de passe incorrect'));
+        _logger.w('Login échoué: ${result.errorMessage}');
+        emit(AuthError(result.errorMessage ?? 'Erreur de connexion'));
       }
     } catch (e) {
       _logger.e('Erreur login: $e');
@@ -102,35 +108,43 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
   }
 
-  /// Gestionnaire: Déconnexion
+  /// Déconnexion : appelle POST /api/logout + supprime le token local.
   Future<void> _onLogout(LogoutEvent event, Emitter<AuthState> emit) async {
     emit(AuthLoading());
     try {
-      // TODO: Implémenter déconnexion
-      // - Nettoyer tokensdu storage
-      // - Logger serveur déconnexion
-
+      await _authRepository.logout();
+      _logger.i('Logout réussi');
       emit(const AuthLoggedOut());
       emit(const AuthUnauthenticated());
     } catch (e) {
       _logger.e('Erreur logout: $e');
-      emit(AuthError('Erreur lors de la déconnexion: ${e.toString()}'));
+      // Même en cas d'erreur, on déconnecte localement
+      await ApiClient().clearToken();
+      emit(const AuthUnauthenticated());
     }
   }
 
-  /// Gestionnaire: Rafraîchir token
+  /// Rafraîchir le token (pas de refresh dans Sanctum, re-login nécessaire).
   Future<void> _onRefreshToken(
     RefreshTokenEvent event,
     Emitter<AuthState> emit,
   ) async {
     emit(AuthLoading());
     try {
-      // TODO: Implémenter refresh token
-      // - Récupérer ancien refresh token
-      // - Appeler API refresh
-      // - Sauvegarder nouveau access token
-
-      emit(const AuthError('TODO: Implémenter refresh token'));
+      // Sanctum n'a pas de refresh token standard
+      // On vérifie si le token actuel est encore valide
+      final user = await _authRepository.getCurrentUser();
+      if (user != null) {
+        final token = await ApiClient().getToken();
+        final authToken = AuthToken(
+          accessToken: token ?? '',
+          refreshToken: '',
+          expirationDate: DateTime.now().add(const Duration(hours: 24)),
+        );
+        emit(AuthSuccess(token: authToken, utilisateur: user));
+      } else {
+        emit(const AuthError('Session expirée, reconnectez-vous'));
+      }
     } catch (e) {
       _logger.e('Erreur refresh token: $e');
       emit(AuthError('Session expirée, reconnectez-vous'));

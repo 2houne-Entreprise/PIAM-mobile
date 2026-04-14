@@ -3,6 +3,8 @@ import 'package:piam/config/app_theme.dart';
 import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/form_auto_sync_mixin.dart';
+
 
 /// Formulaire — Programmation des travaux
 /// 
@@ -16,7 +18,7 @@ class ProgrammationTravauxPage extends StatefulWidget {
   State<ProgrammationTravauxPage> createState() => _ProgrammationTravauxPageState();
 }
 
-class _ProgrammationTravauxPageState extends State<ProgrammationTravauxPage> {
+class _ProgrammationTravauxPageState extends State<ProgrammationTravauxPage> with FormAutoSyncMixin {
   // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
@@ -77,7 +79,7 @@ class _ProgrammationTravauxPageState extends State<ProgrammationTravauxPage> {
         'autre': _autreController.text,
       };
 
-      await DatabaseService().upsertQuestionnaire(
+      await saveAndSync(
         type: 'programmation_travaux',
         localiteId: _localiteId,
         dataMap: dataMap,

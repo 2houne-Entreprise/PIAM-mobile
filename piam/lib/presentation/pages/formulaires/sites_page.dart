@@ -3,6 +3,8 @@ import 'package:piam/config/app_theme.dart';
 import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/form_auto_sync_mixin.dart';
+
 
 /// Formulaire — Sites d'assainissement
 /// 
@@ -16,7 +18,7 @@ class SitesPage extends StatefulWidget {
   State<SitesPage> createState() => _SitesPageState();
 }
 
-class _SitesPageState extends State<SitesPage> {
+class _SitesPageState extends State<SitesPage> with FormAutoSyncMixin {
   // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
@@ -135,7 +137,7 @@ class _SitesPageState extends State<SitesPage> {
         'pointEauLavage': _pointEauLavage,
       };
 
-      await DatabaseService().upsertQuestionnaire(
+      await saveAndSync(
         type: 'sites_assainissement',
         localiteId: _localiteId,
         dataMap: dataMap,

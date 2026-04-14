@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/reference_data.dart';
 
@@ -31,7 +31,7 @@ class DatabaseService {
     final path = join(dbPath, 'piam.db');
     _db = await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -108,6 +108,7 @@ class DatabaseService {
         user_id TEXT,
         localite_id INTEGER,
         sync_status TEXT DEFAULT 'local',
+        status TEXT DEFAULT 'completed', -- 'draft', 'completed', 'synced'
         photo_path TEXT,
         UNIQUE(type, localite_id)
       )
@@ -291,28 +292,6 @@ class DatabaseService {
 
   // ── Questionnaires / Formulaires ──────────────────────────────────────────
 
-  /// Insère un nouveau questionnaire.
-  ///
-  /// ⚠️ Utilisez [upsertQuestionnaire] de préférence pour éviter les doublons.
-  Future<int> insertQuestionnaire(Map<String, dynamic> data) async {
-    if (kIsWeb) {
-      final p = await _prefs;
-      final existingStr = p.getString(_keyQuestionnaires) ?? '[]';
-      final List<dynamic> list = jsonDecode(existingStr);
-      list.add(data);
-      await p.setString(_keyQuestionnaires, jsonEncode(list));
-      return list.length;
-    }
-    final db = await database;
-    // S'assurer que data_json est bien du JSON valide
-    final safeData = _ensureJsonEncoded(data);
-    return db.insert(
-      'questionnaires',
-      safeData,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
   /// Sauvegarde (insère ou met à jour) un formulaire identifié par son [type]
   /// et sa [localiteId].
   ///
@@ -322,15 +301,17 @@ class DatabaseService {
   /// [type]      : ex. 'dernier_suivi_localite', 'etat_lieux_localite', etc.
   /// [localiteId]: l'id de la localité concernée
   /// [dataMap]   : Map<String, dynamic> des données du formulaire
+  /// [status]    : 'draft', 'completed', 'synced'
   /// [userId]    : optionnel, identifiant de l'utilisateur
   Future<void> upsertQuestionnaire({
     required String type,
     required int? localiteId,
     required Map<String, dynamic> dataMap,
+    String status = 'completed',
     dynamic userId,
   }) async {
     final now = DateTime.now().toIso8601String();
-    final dataJson = jsonEncode(dataMap); // ✅ Vrai JSON, pas .toString()
+    final dataJson = jsonEncode(dataMap);
 
     if (kIsWeb) {
       final p = await _prefs;
@@ -340,14 +321,20 @@ class DatabaseService {
       final idx = list.indexWhere(
         (q) => q['type'] == type && q['localite_id'] == localiteId,
       );
+
+      // Pour le web, on génère un ID basé sur le timestamp s'il n'existe pas
+      final existingId = idx >= 0 ? list[idx]['id'] : DateTime.now().millisecondsSinceEpoch;
+
       final entry = {
+        'id': existingId,
         'type': type,
         'data_json': dataJson,
         'date_modification': now,
-        'date_creation': now,
+        'date_creation': idx >= 0 ? list[idx]['date_creation'] : now,
         'user_id': userId?.toString(),
         'localite_id': localiteId,
-        'sync_status': 'local',
+        'sync_status': status == 'synced' ? 'synced' : 'local',
+        'status': status,
       };
       if (idx >= 0) {
         list[idx] = entry;
@@ -355,12 +342,12 @@ class DatabaseService {
         list.add(entry);
       }
       await p.setString(_keyQuestionnaires, jsonEncode(list));
+      debugPrint('[DatabaseService] Web: Questionnaire "$type" sauvegardé (status: $status)');
       return;
     }
 
     final db = await database;
 
-    // Vérifie si un enregistrement existe déjà
     final String whereClause = localiteId == null 
         ? 'type = ? AND localite_id IS NULL' 
         : 'type = ? AND localite_id = ?';
@@ -375,20 +362,20 @@ class DatabaseService {
     );
 
     if (existing.isNotEmpty) {
-      // Mise à jour
+      // Si on update un draft vers completed, ou si on continue un draft
       await db.update(
         'questionnaires',
         {
           'data_json': dataJson,
           'date_modification': now,
           'user_id': userId?.toString(),
-          'sync_status': 'local',
+          'status': status,
+          'sync_status': status == 'synced' ? 'synced' : 'local',
         },
         where: whereClause,
         whereArgs: whereArgs,
       );
     } else {
-      // Insertion
       await db.insert('questionnaires', {
         'type': type,
         'data_json': dataJson,
@@ -396,7 +383,8 @@ class DatabaseService {
         'date_modification': now,
         'user_id': userId?.toString(),
         'localite_id': localiteId,
-        'sync_status': 'local',
+        'status': status,
+        'sync_status': status == 'synced' ? 'synced' : 'local',
       });
     }
   }
@@ -427,7 +415,10 @@ class DatabaseService {
       final dataJson = q['data_json'] as String?;
       if (dataJson == null || dataJson.isEmpty) return null;
       try {
-        return jsonDecode(dataJson) as Map<String, dynamic>;
+        final innerData = jsonDecode(dataJson) as Map<String, dynamic>;
+        innerData['_status'] = q['status'];
+        innerData['_id'] = q['id'];
+        return innerData;
       } catch (_) {
         return null;
       }
@@ -450,13 +441,17 @@ class DatabaseService {
 
     if (res.isEmpty) return null;
 
-    final dataJson = res.first['data_json'] as String?;
+    final result = Map<String, dynamic>.from(res.first);
+    final dataJson = result['data_json'] as String?;
     if (dataJson == null || dataJson.isEmpty) return null;
 
     try {
-      return jsonDecode(dataJson) as Map<String, dynamic>;
+      final innerData = jsonDecode(dataJson) as Map<String, dynamic>;
+      // Fusionner les métadonnées (statut, etc.) avec les données du formulaire si besoin
+      innerData['_status'] = result['status'];
+      innerData['_id'] = result['id'];
+      return innerData;
     } catch (e) {
-      // Le JSON est invalide (ancien format .toString()) — on ignore
       return null;
     }
   }

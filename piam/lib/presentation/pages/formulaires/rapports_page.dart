@@ -3,6 +3,8 @@ import 'package:piam/config/app_theme.dart';
 import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/form_auto_sync_mixin.dart';
+
 
 /// Formulaire — Rapports de contrôle
 /// 
@@ -16,7 +18,7 @@ class RapportsPage extends StatefulWidget {
   State<RapportsPage> createState() => _RapportsPageState();
 }
 
-class _RapportsPageState extends State<RapportsPage> {
+class _RapportsPageState extends State<RapportsPage> with FormAutoSyncMixin {
   // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
@@ -109,7 +111,7 @@ class _RapportsPageState extends State<RapportsPage> {
         'conformites': _conformites,
       };
 
-      await DatabaseService().upsertQuestionnaire(
+      await saveAndSync(
         type: 'rapport_controle',
         localiteId: _localiteId,
         dataMap: dataMap,

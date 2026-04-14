@@ -123,6 +123,7 @@ class AppTextField extends StatelessWidget {
   final TextInputType keyboardType;
   final VoidCallback? onTap;
   final String? Function(String?)? validator;
+  final void Function(String)? onChanged;
 
   const AppTextField({
     Key? key,
@@ -136,6 +137,7 @@ class AppTextField extends StatelessWidget {
     this.keyboardType = TextInputType.text,
     this.onTap,
     this.validator,
+    this.onChanged,
   }) : super(key: key);
 
   @override
@@ -148,6 +150,7 @@ class AppTextField extends StatelessWidget {
         maxLines: maxLines,
         onTap: onTap,
         keyboardType: keyboardType,
+        onChanged: onChanged,
         decoration: InputDecoration(
           labelText: required ? '$label *' : label,
           hintText: hint,
@@ -182,6 +185,7 @@ class AppNumberField extends StatelessWidget {
   final bool required;
   final IconData? prefixIcon;
   final String? hint;
+  final void Function(String)? onChanged;
 
   const AppNumberField({
     Key? key,
@@ -190,6 +194,7 @@ class AppNumberField extends StatelessWidget {
     this.required = false,
     this.prefixIcon,
     this.hint,
+    this.onChanged,
   }) : super(key: key);
 
   @override
@@ -199,6 +204,7 @@ class AppNumberField extends StatelessWidget {
       child: TextFormField(
         controller: controller,
         keyboardType: TextInputType.number,
+        onChanged: onChanged,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         decoration: InputDecoration(
           labelText: required ? '$label *' : label,
@@ -225,6 +231,7 @@ class AppDecimalField extends StatelessWidget {
   final TextEditingController controller;
   final bool required;
   final IconData? prefixIcon;
+  final void Function(String)? onChanged;
 
   const AppDecimalField({
     Key? key,
@@ -232,6 +239,7 @@ class AppDecimalField extends StatelessWidget {
     required this.controller,
     this.required = false,
     this.prefixIcon,
+    this.onChanged,
   }) : super(key: key);
 
   @override
@@ -240,6 +248,7 @@ class AppDecimalField extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: controller,
+        onChanged: onChanged,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         inputFormatters: [
           FilteringTextInputFormatter.allow(RegExp(r'^\d+[,.]?\d{0,2}')),
@@ -281,6 +290,7 @@ class AppDateField extends StatelessWidget {
   final DateTime? firstDate;
   final DateTime? lastDate;
   final void Function(DateTime)? onDateSelected;
+  final void Function(String)? onChanged;
 
   const AppDateField({
     Key? key,
@@ -290,6 +300,7 @@ class AppDateField extends StatelessWidget {
     this.firstDate,
     this.lastDate,
     this.onDateSelected,
+    this.onChanged,
   }) : super(key: key);
 
   Future<void> _pick(BuildContext context) async {
@@ -326,6 +337,7 @@ class AppDateField extends StatelessWidget {
           '${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}';
       controller.text = formatted;
       onDateSelected?.call(picked);
+      onChanged?.call(formatted);
     }
   }
 

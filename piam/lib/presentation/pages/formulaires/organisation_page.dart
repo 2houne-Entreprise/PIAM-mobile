@@ -3,6 +3,8 @@ import 'package:piam/config/app_theme.dart';
 import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/form_auto_sync_mixin.dart';
+
 
 /// Formulaire — Organisation du chantier
 /// 
@@ -16,7 +18,7 @@ class OrganisationPage extends StatefulWidget {
   State<OrganisationPage> createState() => _OrganisationPageState();
 }
 
-class _OrganisationPageState extends State<OrganisationPage> {
+class _OrganisationPageState extends State<OrganisationPage> with FormAutoSyncMixin {
   // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
@@ -142,7 +144,7 @@ class _OrganisationPageState extends State<OrganisationPage> {
         'observations': _observationsController.text,
       };
 
-      await DatabaseService().upsertQuestionnaire(
+      await saveAndSync(
         type: 'organisation_chantier',
         localiteId: _localiteId,
         dataMap: dataMap,

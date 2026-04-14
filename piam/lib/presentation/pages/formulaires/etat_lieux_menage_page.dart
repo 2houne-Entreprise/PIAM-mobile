@@ -3,6 +3,11 @@ import 'package:piam/config/app_theme.dart';
 import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/form_auto_sync_mixin.dart';
+import 'package:piam/services/image_handler_service.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+
 
 /// Formulaire — État des Lieux Ménage
 ///
@@ -18,11 +23,13 @@ class EtatLieuxMenagePage extends StatefulWidget {
   State<EtatLieuxMenagePage> createState() => _EtatLieuxMenagePageState();
 }
 
-class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
+class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> with FormAutoSyncMixin {
   // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
+  final _imageService = ImageHandlerService();
   bool _isLoading = false;
   bool _isSaved = false;
+  String? _syncStatus; // 'draft', 'completed', 'synced'
 
   // Localisation
   int? _localiteId;
@@ -53,6 +60,14 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
   String? _photoPath;
 
   // ── Cycle de vie ──────────────────────────────────────────────────────────
+
+  @override
+  void initState() {
+    super.initState();
+    onSyncStatusChanged = (status) {
+      if (mounted) setState(() => _syncStatus = status);
+    };
+  }
 
   @override
   void dispose() {
@@ -105,11 +120,19 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
       _dlmExiste = data['dlmExiste'] as bool?;
       _typeDLM = data['typeDLM'] as String?;
       _photoPath = data['photoPath'] as String?;
-      _isSaved = true;
+      _syncStatus = data['_status'] as String?;
+      _isSaved = _syncStatus == 'completed' || _syncStatus == 'synced';
     });
   }
 
   // ── Enregistrement ────────────────────────────────────────────────────────
+
+  Future<void> _takePhoto() async {
+    final String? path = await _imageService.takePhoto();
+    if (path != null) {
+      setState(() => _photoPath = path);
+    }
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) {
@@ -148,7 +171,7 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
         'observations': _observationsController.text,
       };
 
-      await DatabaseService().upsertQuestionnaire(
+      await saveAndSync(
         type: 'etat_lieux_menage',
         localiteId: _localiteId,
         dataMap: dataMap,
@@ -183,6 +206,37 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
     }
   }
 
+  /// Déclenche la sauvegarde automatique du brouillon (debounced).
+  void _triggerAutoSave() {
+    onFieldChanged(
+      type: 'etat_lieux_menage',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => {
+        'dateActivite': _dateController.text,
+        'nbTotal': int.tryParse(_nbTotalController.text),
+        'nbHommes': int.tryParse(_nbHommesController.text),
+        'nbFemmes': int.tryParse(_nbFemmesController.text),
+        'nbEnfants': int.tryParse(_nbEnfantsController.text),
+        'accesEau': _accesEau,
+        'difficulteEau': _difficulteEauController.text,
+        'latrinesExiste': _latrinesExiste,
+        'typeLatrine': _typeLatrine,
+        'latrineAmelioree': _latrineAmelioree,
+        'latrineDegradee': _latrineDegradee,
+        'latrineUsageToujours': _latrineUsageToujours,
+        'latrineVoisin': _latrineVoisin,
+        'latrineDefecation': _latrineDefecation,
+        'latrineVoisinNon': _latrineVoisinNon,
+        'latrineDefecationNon': _latrineDefecationNon,
+        'dlmExiste': _dlmExiste,
+        'typeDLM': _typeDLM,
+        'photoPath': _photoPath,
+        'observations': _observationsController.text,
+      },
+    );
+  }
+
   // ── Helpers d'interface ───────────────────────────────────────────────────
 
   /// Crée une ligne Question / Dropdown Oui-Non
@@ -213,13 +267,22 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
       appBar: AppBar(
         title: const Text('État des Lieux – Ménage'),
         actions: [
+          if (_syncStatus == 'draft')
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: AppStatusBadge(
+                label: 'Brouillon',
+                color: Colors.orange,
+                icon: Icons.edit_note,
+              ),
+            ),
           if (_isSaved)
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: AppStatusBadge(
-                label: 'Enregistré',
+                label: _syncStatus == 'synced' ? 'Synchronisé' : 'Enregistré',
                 color: AppTheme.successColor,
-                icon: Icons.check_circle_outline,
+                icon: _syncStatus == 'synced' ? Icons.cloud_done : Icons.check_circle_outline,
               ),
             ),
         ],
@@ -242,6 +305,7 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
                   controller: _dateController,
                   required: true,
                   lastDate: DateTime.now(),
+                  onChanged: (v) => _triggerAutoSave(),
                 ),
               ],
             ),
@@ -255,6 +319,7 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
                   label: 'Nombre total de personnes',
                   controller: _nbTotalController,
                   required: true,
+                  onChanged: (v) => _triggerAutoSave(),
                 ),
                 Row(
                   children: [
@@ -262,6 +327,7 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
                       child: AppNumberField(
                         label: 'Hommes',
                         controller: _nbHommesController,
+                        onChanged: (v) => _triggerAutoSave(),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -269,6 +335,7 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
                       child: AppNumberField(
                         label: 'Femmes',
                         controller: _nbFemmesController,
+                        onChanged: (v) => _triggerAutoSave(),
                       ),
                     ),
                   ],
@@ -276,6 +343,7 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
                 AppNumberField(
                   label: 'Enfants < 5 ans',
                   controller: _nbEnfantsController,
+                  onChanged: (v) => _triggerAutoSave(),
                 ),
               ],
             ),
@@ -289,13 +357,17 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
                   label: 'Accès à l\'eau potable',
                   value: _accesEau,
                   required: true,
-                  onChanged: (v) => setState(() => _accesEau = v),
+                  onChanged: (v) => setState(() {
+                    _accesEau = v;
+                    _triggerAutoSave();
+                  }),
                 ),
                 if (_accesEau == false)
                   AppTextField(
                     label: 'Type de difficulté (optionnel)',
                     controller: _difficulteEauController,
                     prefixIcon: Icons.warning_amber_outlined,
+                    onChanged: (v) => _triggerAutoSave(),
                   ),
               ],
             ),
@@ -313,7 +385,10 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
                         value: true,
                         groupValue: _latrinesExiste,
                         activeColor: AppTheme.successColor,
-                        onChanged: (v) => setState(() => _latrinesExiste = v),
+                        onChanged: (v) => setState(() {
+                          _latrinesExiste = v;
+                          _triggerAutoSave();
+                        }),
                       ),
                     ),
                     Expanded(
@@ -322,7 +397,10 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
                         value: false,
                         groupValue: _latrinesExiste,
                         activeColor: AppTheme.errorColor,
-                        onChanged: (v) => setState(() => _latrinesExiste = v),
+                        onChanged: (v) => setState(() {
+                          _latrinesExiste = v;
+                          _triggerAutoSave();
+                        }),
                       ),
                     ),
                   ],
@@ -342,35 +420,63 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
                           value: 'amelioree', child: Text('Améliorée')),
                       DropdownMenuItem(value: 'autre', child: Text('Autre')),
                     ],
-                    onChanged: (v) => setState(() => _typeLatrine = v),
+                    onChanged: (v) => setState(() {
+                      _typeLatrine = v;
+                      _triggerAutoSave();
+                    }),
                   ),
                   _buildOuiNon(
                     label: 'Latrine améliorée ?',
                     value: _latrineAmelioree,
-                    onChanged: (v) => setState(() => _latrineAmelioree = v),
+                    onChanged: (v) => setState(() {
+                      _latrineAmelioree = v;
+                      _triggerAutoSave();
+                    }),
                   ),
                   _buildOuiNon(
                     label: 'Latrine dégradée ?',
                     value: _latrineDegradee,
-                    onChanged: (v) => setState(() => _latrineDegradee = v),
+                    onChanged: (v) => setState(() {
+                      _latrineDegradee = v;
+                      _triggerAutoSave();
+                    }),
                   ),
                   _buildOuiNon(
                     label: 'Utilisez-vous toujours cette latrine ?',
                     value: _latrineUsageToujours,
-                    onChanged: (v) => setState(() => _latrineUsageToujours = v),
+                    onChanged: (v) => setState(() {
+                      _latrineUsageToujours = v;
+                      _triggerAutoSave();
+                    }),
                   ),
                   _buildOuiNon(
                     label: 'Utilisez-vous aussi la latrine du voisin ?',
                     value: _latrineVoisin,
-                    onChanged: (v) => setState(() => _latrineVoisin = v),
+                    onChanged: (v) => setState(() {
+                      _latrineVoisin = v;
+                      _triggerAutoSave();
+                    }),
                   ),
                   _buildOuiNon(
                     label: 'Pratiquez-vous la défécation à l\'air libre ?',
                     value: _latrineDefecation,
-                    onChanged: (v) => setState(() => _latrineDefecation = v),
+                    onChanged: (v) => setState(() {
+                      _latrineDefecation = v;
+                      _triggerAutoSave();
+                    }),
                   ),
                   const SizedBox(height: 8),
-                  // Photo (optionnelle)
+                  // Photo (professionnelle)
+                  if (_photoPath != null) ...[
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: kIsWeb 
+                        ? Image.network(_photoPath!, height: 200, width: double.infinity, fit: BoxFit.cover)
+                        : Image.file(File(_photoPath!), height: 200, width: double.infinity, fit: BoxFit.cover),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
                   OutlinedButton.icon(
                     icon: Icon(
                       _photoPath != null ? Icons.check_circle : Icons.camera_alt,
@@ -379,12 +485,9 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
                           : AppTheme.primaryColor,
                     ),
                     label: Text(
-                      _photoPath != null ? 'Photo prise ✓' : 'Prendre une photo',
+                      _photoPath != null ? 'Changer la photo' : 'Prendre une photo',
                     ),
-                    onPressed: () {
-                      // TODO: Intégrer image_picker
-                      setState(() => _photoPath = 'photo_placeholder.jpg');
-                    },
+                    onPressed: _takePhoto,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: _photoPath != null
                           ? AppTheme.successColor
@@ -399,12 +502,18 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
                   _buildOuiNon(
                     label: 'Utilisez-vous la latrine d\'un voisin ?',
                     value: _latrineVoisinNon,
-                    onChanged: (v) => setState(() => _latrineVoisinNon = v),
+                    onChanged: (v) => setState(() {
+                      _latrineVoisinNon = v;
+                      _triggerAutoSave();
+                    }),
                   ),
                   _buildOuiNon(
                     label: 'Pratiquez-vous la défécation à l\'air libre ?',
                     value: _latrineDefecationNon,
-                    onChanged: (v) => setState(() => _latrineDefecationNon = v),
+                    onChanged: (v) => setState(() {
+                      _latrineDefecationNon = v;
+                      _triggerAutoSave();
+                    }),
                   ),
                 ],
               ],
@@ -448,6 +557,7 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> {
                   controller: _observationsController,
                   maxLines: 3,
                   prefixIcon: Icons.edit_note,
+                  onChanged: (v) => _triggerAutoSave(),
                 ),
               ],
             ),

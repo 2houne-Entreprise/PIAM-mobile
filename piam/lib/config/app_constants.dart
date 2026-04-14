@@ -1,10 +1,22 @@
+import 'package:flutter/foundation.dart';
+
 /// Constantes de l'application
 class AppConstants {
-  // API
-  static const String apiBaseUrl = 'https://api.piam.com';
+  // API — Adapter selon l'environnement :
+  static String get apiBaseUrl {
+    if (kIsWeb) {
+      return 'http://127.0.0.1:8000/api';
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:8000/api';
+    }
+    // Pour l'application Bureau Windows, iOS et autres
+    return 'http://127.0.0.1:8000/api';
+  }
+
   static const String apiTimeout = '30';
 
-  // Storage
+  // Storage keys
   static const String authTokenKey = 'auth_token';
   static const String refreshTokenKey = 'refresh_token';
   static const String userIdKey = 'user_id';
@@ -28,11 +40,6 @@ class AppConstants {
     'programmation_travaux',
     'travaux_receptiones',
   ];
-
-  // ⚠️ TODO(prod): Supprimer ces credentials avant la mise en production
-  // Compte de test unique pour la version de démonstration
-  static const String testEmail = 'test@piam.mr';
-  static const String testPassword = 'Piam2026!';
 
   // Validation
   static const int minPasswordLength = 6;

@@ -32,8 +32,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _checkParametrage() async {
+    final param = await DatabaseService().getParametreUtilisateur();
     setState(() {
       _checkedParametrage = true;
+      if (param == null) {
+        // Rediriger de force vers le paramétrage si rien n'est paramétré
+        _selectedIndex = 1;
+      } else {
+        // Si paramétrage fait, on peut aller sur l'accueil ou le Dashboard (ici on affiche l'accueil par défaut)
+        _selectedIndex = 0;
+      }
     });
   }
 

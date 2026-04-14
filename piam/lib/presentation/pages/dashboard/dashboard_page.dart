@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:piam/config/app_strings.dart';
 import 'package:piam/config/app_theme.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/sync_service.dart';
+import 'package:piam/services/questionnaire_api_service.dart';
+import 'package:piam/services/api_client.dart';
 import 'package:piam/data/reference_data.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 /// Dashboard affichant les 9 formulaires disponibles
+/// avec données hybrides (SQLite local + API) et indicateur de sync.
 
 typedef GoToParametrageCallback = void Function();
 
@@ -35,42 +40,75 @@ class _DashboardPageState extends State<DashboardPage> {
     'Dernier Suivi Ménage': 'brouillon',
     'Programmation des Travaux': 'brouillon',
     'Inventaire': 'brouillon',
-    // 'Travaux Réceptionnés': 'brouillon',
   };
 
   Map<String, int> stats = {'complète': 0, 'validée': 0, 'brouillon': 0};
   String? projectName;
   String? localiteName;
   bool isLoading = true;
+  bool _isSyncing = false;
+  int _pendingSync = 0;
+  bool _isOnline = false;
 
   @override
   void initState() {
     super.initState();
     _loadDashboardData();
+    _checkConnectivity();
+  }
+
+  Future<void> _checkConnectivity() async {
+    final status = await Connectivity().checkConnectivity();
+    if (mounted) {
+      setState(() {
+        _isOnline = status.any((s) => s != ConnectivityResult.none);
+      });
+    }
+    // Écouter les changements
+    Connectivity().onConnectivityChanged.listen((statusList) {
+      if (mounted) {
+        setState(() {
+          _isOnline = statusList.any((s) => s != ConnectivityResult.none);
+        });
+      }
+    });
   }
 
   Future<void> _loadDashboardData() async {
     try {
       final dbService = DatabaseService();
       final param = await dbService.getParametreUtilisateur();
+
+      // Nombre de questionnaires en attente de sync
+      _pendingSync = await SyncService().getPendingCount();
+
       if (param != null) {
         // Charger les questionnaires pour le statut
         final questionnaires = await dbService.getQuestionnaires();
-        // Statuts dynamiques (exemple simplifié)
+        // Statuts dynamiques
         Map<String, String> dynamicStatuses = {};
         for (var q in questionnaires) {
           dynamicStatuses[q['type']] = q['sync_status'] ?? 'brouillon';
         }
-        // Statistiques (exemple)
+        // Statistiques
         Map<String, int> dynamicStats = {
           'complète': 0,
           'validée': 0,
           'brouillon': 0,
         };
-        for (var s in dynamicStatuses.values) {
-          if (dynamicStats.containsKey(s))
-            dynamicStats[s] = dynamicStats[s]! + 1;
+        // Compter les formulaires avec des données
+        int synced = 0;
+        int local = 0;
+        for (var q in questionnaires) {
+          final syncStatus = q['sync_status'] ?? 'local';
+          if (syncStatus == 'synced') {
+            synced++;
+          } else {
+            local++;
+          }
         }
+        dynamicStats['complète'] = synced;
+        dynamicStats['brouillon'] = local;
 
         // --- Résolution du nom via ReferenceData ---
         int? locId = param['localite_id'];
@@ -124,6 +162,29 @@ class _DashboardPageState extends State<DashboardPage> {
         title: Text(AppStrings.dashboard),
         elevation: 0,
         actions: [
+          // Indicateur de connectivité
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Icon(
+              _isOnline ? Icons.cloud_done : Icons.cloud_off,
+              color: _isOnline ? Colors.green : Colors.grey,
+              size: 20,
+            ),
+          ),
+          // Badge sync en attente
+          if (_pendingSync > 0)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Chip(
+                avatar: const Icon(Icons.sync, size: 16, color: Colors.white),
+                label: Text(
+                  '$_pendingSync',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+                backgroundColor: Colors.orange,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.person),
             onPressed: _showUserProfile,
@@ -191,9 +252,28 @@ class _DashboardPageState extends State<DashboardPage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                icon: const Icon(Icons.sync),
-                label: const Text('Synchroniser'),
-                onPressed: _syncData,
+                icon: _isSyncing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.sync),
+                label: Text(_isSyncing
+                    ? 'Synchronisation...'
+                    : _pendingSync > 0
+                        ? 'Synchroniser ($_pendingSync en attente)'
+                        : 'Tout est synchronisé ✓'),
+                onPressed: _isSyncing ? null : _syncData,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _pendingSync > 0
+                      ? AppTheme.colorBlue
+                      : Colors.green.shade600,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
               ),
             ),
           ],
@@ -247,6 +327,35 @@ class _DashboardPageState extends State<DashboardPage> {
                   ],
                 ),
               ),
+              // Indicateur sync
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _isOnline
+                      ? Colors.green.withOpacity(0.1)
+                      : Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _isOnline ? Icons.cloud_done : Icons.cloud_off,
+                      size: 14,
+                      color: _isOnline ? Colors.green : Colors.orange,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _isOnline ? 'En ligne' : 'Hors ligne',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: _isOnline ? Colors.green : Colors.orange,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -271,9 +380,9 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildStats() {
     final dashboardStats = [
-      (stats['complète']?.toString() ?? '0', 'Complètes', AppTheme.colorYellow),
-      (stats['validée']?.toString() ?? '0', 'Validée', AppTheme.colorGreen),
-      (stats['brouillon']?.toString() ?? '0', 'Brouillon', AppTheme.colorGray),
+      (stats['complète']?.toString() ?? '0', 'Synchronisés', AppTheme.colorGreen),
+      (stats['brouillon']?.toString() ?? '0', 'En attente', AppTheme.colorYellow),
+      ('${stats['complète']! + stats['brouillon']!}', 'Total', AppTheme.colorBlue),
     ];
 
     return Row(
@@ -411,6 +520,18 @@ class _DashboardPageState extends State<DashboardPage> {
           color: AppTheme.colorGray,
           icon: Icons.edit_outlined,
         );
+      case 'local':
+        return _StatusConfig(
+          label: 'Local',
+          color: AppTheme.colorYellow,
+          icon: Icons.phone_android,
+        );
+      case 'synced':
+        return _StatusConfig(
+          label: 'Synchronisé',
+          color: AppTheme.colorGreen,
+          icon: Icons.cloud_done_outlined,
+        );
       case 'complète':
         return _StatusConfig(
           label: 'Complète',
@@ -445,13 +566,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _openFormulaire(BuildContext context, String formulaireName) {
-    // Navigation vers le formulaire spécifique
     switch (formulaireName) {
-      // case 'Paramètres initiales':
-      //   if (widget.onGoToParametrage != null) {
-      //     widget.onGoToParametrage!();
-      //   }
-      //   break;
       case 'Déclenchement':
         Navigator.of(
           context,
@@ -490,23 +605,43 @@ class _DashboardPageState extends State<DashboardPage> {
           context,
         ).pushNamed('/formulaires/inventaire', arguments: 'new');
         break;
-      // case 'Travaux Réceptionnés':
-      //   break;
     }
   }
 
-  void _syncData() {
-    // TODO: Implémenter synchronisation
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Synchronisation en cours...'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+  /// Synchronise les données locales avec l'API.
+  Future<void> _syncData() async {
+    setState(() => _isSyncing = true);
+
+    final result = await SyncService().syncAll();
+
+    if (mounted) {
+      setState(() => _isSyncing = false);
+
+      // Recharger les données du dashboard
+      await _loadDashboardData();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                result.synced > 0 ? Icons.check_circle : Icons.info,
+                color: Colors.white,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(child: Text(result.message)),
+            ],
+          ),
+          backgroundColor:
+              result.synced > 0 ? Colors.green : Colors.orange,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   void _showUserProfile() {
-    // TODO: Implémenter affichage profil
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Profil utilisateur')));

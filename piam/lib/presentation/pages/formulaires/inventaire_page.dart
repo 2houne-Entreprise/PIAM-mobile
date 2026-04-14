@@ -3,6 +3,11 @@ import 'package:piam/config/app_theme.dart';
 import 'package:piam/presentation/widgets/app_form_fields.dart';
 import 'package:piam/presentation/widgets/form_header_widget.dart';
 import 'package:piam/services/database_service.dart';
+import 'package:piam/services/form_auto_sync_mixin.dart';
+import 'package:piam/services/image_handler_service.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+
 
 /// Formulaire — Inventaire des infrastructures
 /// 
@@ -16,11 +21,13 @@ class InventairePage extends StatefulWidget {
   State<InventairePage> createState() => _InventairePageState();
 }
 
-class _InventairePageState extends State<InventairePage> {
+class _InventairePageState extends State<InventairePage> with FormAutoSyncMixin {
   // ── État ─────────────────────────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
+  final _imageService = ImageHandlerService();
   bool _isLoading = false;
   bool _isSaved = false;
+  String? _syncStatus; // 'draft', 'completed', 'synced'
 
   int? _localiteId;
   dynamic _userId;
@@ -44,6 +51,14 @@ class _InventairePageState extends State<InventairePage> {
   bool _dlmEauSavon = false;
   bool _dlmFonctionnel = false;
   String? _photoPath;
+
+  @override
+  void initState() {
+    super.initState();
+    onSyncStatusChanged = (status) {
+      if (mounted) setState(() => _syncStatus = status);
+    };
+  }
 
   @override
   void dispose() {
@@ -94,9 +109,43 @@ class _InventairePageState extends State<InventairePage> {
       _dlmEauSavon = data['dlmEauSavon'] ?? false;
       _dlmFonctionnel = data['dlmFonctionnel'] ?? false;
       _photoPath = data['photoPath'];
-
-      _isSaved = true;
+      _syncStatus = data['_status'] as String?;
+      _isSaved = _syncStatus == 'completed' || _syncStatus == 'synced';
     });
+  }
+
+  Future<void> _takePhoto() async {
+    final path = await _imageService.takePhoto();
+    if (path != null) {
+      setState(() => _photoPath = path);
+    }
+  }
+
+  /// Déclenche la sauvegarde automatique du brouillon (debounced).
+  void _triggerAutoSave() {
+    onFieldChanged(
+      type: 'inventaire_infra',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => {
+        'nomInfrastructure': _nomInfraController.text,
+        'typeInfrastructure': _typeInfraController.text,
+        'sourceEau': _sourceEauController.text,
+        'distanceSource': double.tryParse(_distanceSourceController.text),
+        'accesEau': _accesEau,
+        'accesLatrines': _accesLatrines,
+        'nbBlocs': int.tryParse(_nbBlocsController.text),
+        'nbCabines': int.tryParse(_nbCabinesController.text),
+        'nbCabinesFonctionnelles': int.tryParse(_nbCabinesFonctController.text),
+        'photoPath': _photoPath,
+        'besoinConstruction': _besoinConstruction,
+        'nbBlocsConstruire': int.tryParse(_nbBlocsConstruireController.text),
+        'nbCabinesConstruire': int.tryParse(_nbCabinesConstruireController.text),
+        'presenceDLM': _presenceDLM,
+        'dlmEauSavon': _dlmEauSavon,
+        'dlmFonctionnel': _dlmFonctionnel,
+      },
+    );
   }
 
   // ── Sauvegarde ────────────────────────────────────────────────────────────
@@ -126,7 +175,7 @@ class _InventairePageState extends State<InventairePage> {
         'dlmFonctionnel': _dlmFonctionnel,
       };
 
-      await DatabaseService().upsertQuestionnaire(
+      await saveAndSync(
         type: 'inventaire_infra',
         localiteId: _localiteId,
         dataMap: dataMap,
@@ -162,13 +211,22 @@ class _InventairePageState extends State<InventairePage> {
       appBar: AppBar(
         title: const Text('Inventaire des infrastructures'),
         actions: [
+          if (_syncStatus == 'draft')
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: AppStatusBadge(
+                label: 'Brouillon',
+                color: Colors.orange,
+                icon: Icons.edit_note,
+              ),
+            ),
           if (_isSaved)
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: AppStatusBadge(
-                label: 'Enregistré',
+                label: _syncStatus == 'synced' ? 'Synchronisé' : 'Enregistré',
                 color: AppTheme.successColor,
-                icon: Icons.check_circle_outline,
+                icon: _syncStatus == 'synced' ? Icons.cloud_done : Icons.check_circle_outline,
               ),
             ),
         ],
@@ -188,11 +246,13 @@ class _InventairePageState extends State<InventairePage> {
                   label: 'Nom de l\'infrastructure',
                   controller: _nomInfraController,
                   required: true,
+                  onChanged: (v) => _triggerAutoSave(),
                 ),
                 AppTextField(
                   label: 'Type d\'infrastructure',
                   controller: _typeInfraController,
                   hint: 'Ex: École, Centre de santé...',
+                  onChanged: (v) => _triggerAutoSave(),
                 ),
               ],
             ),
@@ -201,17 +261,22 @@ class _InventairePageState extends State<InventairePage> {
             AppFormCard(
               children: [
                 const AppSectionTitle(title: 'Accès à l\'Eau', icon: Icons.water_drop_outlined),
-                _buildYesNoRadio('La localité a-t-elle accès à l\'eau ?', _accesEau, (v) => setState(() => _accesEau = v)),
+                _buildYesNoRadio('La localité a-t-elle accès à l\'eau ?', _accesEau, (v) => setState(() {
+                  _accesEau = v;
+                  _triggerAutoSave();
+                })),
                 if (_accesEau != null) ...[
                   AppTextField(
                     label: 'Source d\'eau',
                     controller: _sourceEauController,
                     hint: 'Ex: Forage, Puits...',
+                    onChanged: (v) => _triggerAutoSave(),
                   ),
                   AppTextField(
                     label: 'Distance à la source (m)',
                     controller: _distanceSourceController,
                     keyboardType: TextInputType.number,
+                    onChanged: (v) => _triggerAutoSave(),
                   ),
                 ],
               ],
@@ -221,34 +286,41 @@ class _InventairePageState extends State<InventairePage> {
             AppFormCard(
               children: [
                 const AppSectionTitle(title: 'Assainissement', icon: Icons.wc_rounded),
-                _buildYesNoRadio('Présence de latrines ?', _accesLatrines, (v) => setState(() => _accesLatrines = v)),
+                _buildYesNoRadio('Présence de latrines ?', _accesLatrines, (v) => setState(() {
+                  _accesLatrines = v;
+                  _triggerAutoSave();
+                })),
                 if (_accesLatrines == true) ...[
                   Row(
                     children: [
-                      Expanded(child: AppTextField(label: 'Nb Blocs', controller: _nbBlocsController, keyboardType: TextInputType.number)),
+                      Expanded(child: AppTextField(label: 'Nb Blocs', controller: _nbBlocsController, keyboardType: TextInputType.number, onChanged: (v) => _triggerAutoSave())),
                       const SizedBox(width: 12),
-                      Expanded(child: AppTextField(label: 'Nb Cabines', controller: _nbCabinesController, keyboardType: TextInputType.number)),
+                      Expanded(child: AppTextField(label: 'Nb Cabines', controller: _nbCabinesController, keyboardType: TextInputType.number, onChanged: (v) => _triggerAutoSave())),
                     ],
                   ),
                   AppTextField(
                     label: 'Nombre de cabines fonctionnelles',
                     controller: _nbCabinesFonctController,
                     keyboardType: TextInputType.number,
+                    onChanged: (v) => _triggerAutoSave(),
                   ),
                 ],
                 if (_accesLatrines == false) ...[
                   CheckboxListTile(
                     title: const Text('Besoin de construction / réhabilitation', style: TextStyle(fontSize: 14)),
                     value: _besoinConstruction ?? false,
-                    onChanged: (v) => setState(() => _besoinConstruction = v),
+                    onChanged: (v) => setState(() {
+                      _besoinConstruction = v;
+                      _triggerAutoSave();
+                    }),
                     contentPadding: EdgeInsets.zero,
                   ),
                   if (_besoinConstruction == true)
                     Row(
                       children: [
-                        Expanded(child: AppTextField(label: 'Blocs à prévoir', controller: _nbBlocsConstruireController, keyboardType: TextInputType.number)),
+                        Expanded(child: AppTextField(label: 'Blocs à prévoir', controller: _nbBlocsConstruireController, keyboardType: TextInputType.number, onChanged: (v) => _triggerAutoSave())),
                         const SizedBox(width: 12),
-                        Expanded(child: AppTextField(label: 'Cabines à prévoir', controller: _nbCabinesConstruireController, keyboardType: TextInputType.number)),
+                        Expanded(child: AppTextField(label: 'Cabines à prévoir', controller: _nbCabinesConstruireController, keyboardType: TextInputType.number, onChanged: (v) => _triggerAutoSave())),
                       ],
                     ),
                 ],
@@ -259,9 +331,38 @@ class _InventairePageState extends State<InventairePage> {
             AppFormCard(
               children: [
                 const AppSectionTitle(title: 'Dispositif de Lavage des Mains (DLM)', icon: Icons.clean_hands_outlined),
-                _buildCheckbox('Présence de DLM', _presenceDLM, (v) => setState(() => _presenceDLM = v!)),
-                _buildCheckbox('DLM avec eau + savon', _dlmEauSavon, (v) => setState(() => _dlmEauSavon = v!)),
-                _buildCheckbox('DLM fonctionnel', _dlmFonctionnel, (v) => setState(() => _dlmFonctionnel = v!)),
+                _buildCheckbox('Présence de DLM', _presenceDLM, (v) => setState(() {
+                  _presenceDLM = v!;
+                  _triggerAutoSave();
+                })),
+                _buildCheckbox('DLM avec eau + savon', _dlmEauSavon, (v) => setState(() {
+                  _dlmEauSavon = v!;
+                  _triggerAutoSave();
+                })),
+                _buildCheckbox('DLM fonctionnel', _dlmFonctionnel, (v) => setState(() {
+                  _dlmFonctionnel = v!;
+                  _triggerAutoSave();
+                })),
+                
+                const Divider(),
+                const AppSectionTitle(title: 'Preuve Photo', icon: Icons.camera_alt_outlined),
+                if (_photoPath != null) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: kIsWeb 
+                      ? Image.network(_photoPath!, height: 200, width: double.infinity, fit: BoxFit.cover)
+                      : Image.file(File(_photoPath!), height: 200, width: double.infinity, fit: BoxFit.cover),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                OutlinedButton.icon(
+                  onPressed: _takePhoto,
+                  icon: Icon(_photoPath != null ? Icons.check_circle : Icons.camera_alt),
+                  label: Text(_photoPath != null ? 'Changer la photo' : 'Prendre une photo'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _photoPath != null ? AppTheme.successColor : AppTheme.primaryColor,
+                  ),
+                ),
               ],
             ),
 
