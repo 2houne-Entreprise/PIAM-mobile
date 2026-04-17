@@ -32,6 +32,16 @@ class _ProgrammationTravauxPageState extends State<ProgrammationTravauxPage> wit
   final _nbTravauxController = TextEditingController();
   final _autreController = TextEditingController();
 
+  bool _isRestoring = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _dateActiviteController.addListener(_triggerAutoSave);
+    _nbTravauxController.addListener(_triggerAutoSave);
+    _autreController.addListener(_triggerAutoSave);
+  }
+
   @override
   void dispose() {
     _dateActiviteController.dispose();
@@ -57,15 +67,34 @@ class _ProgrammationTravauxPageState extends State<ProgrammationTravauxPage> wit
     );
     if (data == null || !mounted) return;
 
+    _isRestoring = true;
+
     setState(() {
       _dateActiviteController.text = data['dateActivite'] ?? '';
       _nbTravauxController.text = data['nbTravaux']?.toString() ?? '';
       _autreController.text = data['autre'] ?? '';
       _isSaved = true;
     });
+
+    _isRestoring = false;
   }
 
   // ── Sauvegarde ────────────────────────────────────────────────────────────
+
+  void _triggerAutoSave() {
+    if (_isRestoring) return;
+
+    onFieldChanged(
+      type: 'programmation_travaux',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => {
+        'dateActivite': _dateActiviteController.text,
+        'nbTravaux': int.tryParse(_nbTravauxController.text),
+        'autre': _autreController.text,
+      },
+    );
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;

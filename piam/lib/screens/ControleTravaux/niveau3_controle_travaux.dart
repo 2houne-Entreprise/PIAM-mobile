@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -606,6 +605,144 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
       'remark': '',
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDraft();
+  }
+
+  /// Charge les données sauvegardées et restaure tous les contrôleurs et listes
+  Future<void> _loadDraft() async {
+    final param = await _dbService.getParametreUtilisateur();
+    final localiteId = param?['localite_id'];
+    if (localiteId == null) return;
+
+    final data = await _dbService.getQuestionnaire(
+      type: 'controle_travaux',
+      localiteId: localiteId,
+    );
+    if (data == null || !mounted) return;
+
+    setState(() {
+      // Statuts des sections
+      final ss = data['sectionStatus'];
+      if (ss is Map) {
+        ss.forEach((k, v) {
+          if (_sectionStatus.containsKey(k)) _sectionStatus[k] = v.toString();
+        });
+      }
+
+      // Section 2
+      final s2 = data['section2'];
+      if (s2 is Map) {
+        _implantDateController.text = s2['dateImplantation'] ?? '';
+        _gpsXController.text = s2['gpsX'] ?? '';
+        _gpsYController.text = s2['gpsY'] ?? '';
+        _fouillesDebutController.text = s2['dateDebutFouilles'] ?? '';
+        _fouillesFinController.text = s2['dateFinFouilles'] ?? '';
+        _fouillesConformes = s2['fouillesConformes'] ?? 'Oui';
+        _sec2RemarqueController.text = s2['remarque'] ?? '';
+        _photos['section2'] = s2['photo'];
+        _photosGps['section2'] = (s2['photoGps'] as Map?)?.cast<String, String>();
+      }
+
+      // Section 3
+      final s3 = data['section3'];
+      if (s3 is Map) {
+        _sec3AprioriDateController.text = s3['aprioriDate'] ?? '';
+        _sec3AposterioriDateController.text = s3['aposterioriDate'] ?? '';
+        _restoreQuestionList(_sec3APriori, s3['apriori']);
+        _restoreQuestionList(_sec3APosteriori, s3['aposteriori']);
+        _photos['section3Apriori'] = (s3['photos'] as Map?)?['apriori'];
+        _photos['section3Aposteriori'] = (s3['photos'] as Map?)?['aposteriori'];
+      }
+
+      // Section 4
+      final s4 = data['section4'];
+      if (s4 is Map) {
+        _sec4AprioriDateController.text = s4['aprioriDate'] ?? '';
+        _sec4AposterioriDateController.text = s4['aposterioriDate'] ?? '';
+        _restoreQuestionList(_sec4APriori, s4['apriori']);
+        _restoreQuestionList(_sec4APosteriori, s4['aposteriori']);
+        _photos['section4'] = s4['photo'];
+      }
+
+      // Section 5
+      final s5 = data['section5'];
+      if (s5 is Map) {
+        _sec5AprioriDateController.text = s5['aprioriDate'] ?? '';
+        _sec5AposterioriDateController.text = s5['aposterioriDate'] ?? '';
+        _restoreQuestionList(_sec5APriori, s5['apriori']);
+        _restoreQuestionList(_sec5APosteriori, s5['aposteriori']);
+        _photos['section5'] = s5['photo'];
+      }
+
+      // Section 6
+      _restoreQuestionList(_sec6, data['section6']?['questions']);
+
+      // Section 7
+      final s7 = data['section7'];
+      if (s7 is Map) {
+        _sec7AprioriDateController.text = s7['aprioriDate'] ?? '';
+        _sec7AposterioriDateController.text = s7['aposterioriDate'] ?? '';
+        _restoreQuestionList(_sec7APriori, s7['apriori']);
+        _restoreQuestionList(_sec7APosteriori, s7['aposteriori']);
+      }
+
+      // Section 8
+      final s8 = data['section8'];
+      if (s8 is Map) {
+        _sec8AprioriDateController.text = s8['aprioriDate'] ?? '';
+        _sec8AposterioriDateController.text = s8['aposterioriDate'] ?? '';
+        _restoreQuestionList(_sec8APriori, s8['apriori']);
+        _restoreQuestionList(_sec8APosteriori, s8['aposteriori']);
+      }
+
+      // Sections 9, 10, 12
+      _restoreQuestionList(_sec9, data['section9']?['questions']);
+      _restoreQuestionList(_sec10, data['section10']?['questions']);
+      _restoreQuestionList(_sec12, data['section12']?['questions']);
+
+      // Section 11
+      final s11 = data['section11'];
+      if (s11 is Map) {
+        _sec11AprioriDateController.text = s11['aprioriDate'] ?? '';
+        _sec11AposterioriDateController.text = s11['aposterioriDate'] ?? '';
+        _restoreQuestionList(_sec11APriori, s11['apriori']);
+        _restoreQuestionList(_sec11APosteriori, s11['aposteriori']);
+        _photos['section11'] = s11['photo'];
+      }
+
+      // Section 13
+      _restoreQuestionList(_sec13Avant, data['section13']?['avant']);
+      _restoreQuestionList(_sec13Pendant, data['section13']?['pendant']);
+
+      // Section 14
+      _restoreQuestionList(_sec14, data['section14']);
+
+      // Section 15
+      final s15 = data['section15'];
+      if (s15 is Map) {
+        _appreciationAvancement = s15['appreciation'] ?? 'Satisfaisant';
+        _recommandation = s15['recommandation'] ?? 'Mobiliser le personnel requis';
+        _autreRecommandationController.text = s15['autreRecommandation'] ?? '';
+      }
+    });
+  }
+
+  /// Restaure les réponses et remarques d'une liste de questions depuis les données JSON
+  void _restoreQuestionList(List<Map<String, dynamic>> target, dynamic sourceData) {
+    if (sourceData == null || sourceData is! List) return;
+    final source = sourceData as List;
+    for (int i = 0; i < target.length && i < source.length; i++) {
+      final s = source[i];
+      if (s is Map) {
+        if (s.containsKey('response')) target[i]['response'] = s['response'];
+        if (s.containsKey('remark')) target[i]['remark'] = s['remark'];
+      }
+    }
+  }
 
   @override
   void dispose() {

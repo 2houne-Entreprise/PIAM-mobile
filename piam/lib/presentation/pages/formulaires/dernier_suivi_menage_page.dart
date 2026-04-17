@@ -48,6 +48,8 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> with Fo
   bool? _dlmExiste;
   String? _typeDlm;
 
+  bool _isRestoring = false;
+
   // ── Cycle de vie ──────────────────────────────────────────────────────────
 
   @override
@@ -56,6 +58,8 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> with Fo
     onSyncStatusChanged = (status) {
       if (mounted) setState(() => _syncStatus = status);
     };
+
+    _nbMenagesPartageLatrineCtr.addListener(_triggerAutoSave);
   }
 
   @override
@@ -81,6 +85,8 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> with Fo
     );
     if (data == null || !mounted) return;
 
+    _isRestoring = true;
+
     setState(() {
       _latrineExiste = data['latrine_existe'] as bool?;
       _ancienneLatrineDegradee = data['ancienne_latrine_degradee'] as bool? ?? false;
@@ -95,6 +101,8 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> with Fo
     });
     _nbMenagesPartageLatrineCtr.text =
         data['nb_menages_partage_latrine']?.toString() ?? '';
+        
+    _isRestoring = false;
   }
 
   // ── Enregistrement ────────────────────────────────────────────────────────
@@ -108,6 +116,8 @@ class _DernierSuiviMenagePageState extends State<DernierSuiviMenagePage> with Fo
 
   /// Déclenche la sauvegarde automatique du brouillon (debounced).
   void _triggerAutoSave() {
+    if (_isRestoring) return;
+
     onFieldChanged(
       type: 'dernier_suivi_menage',
       localiteId: _localiteId,

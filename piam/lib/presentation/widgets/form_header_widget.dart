@@ -69,15 +69,15 @@ class _FormHeaderWidgetState extends State<FormHeaderWidget> {
         _isLoading = false;
       });
 
-      // On informe le formulaire parent
-      widget.onDataLoaded(localiteId, userId);
+      // On informe le formulaire parent avec 0 si null pour forcer le load
+      widget.onDataLoaded(localiteId ?? 0, userId);
     } else {
       if (mounted) {
         setState(() {
            _isLoading = false;
            _localisationInfo = '⚠️ Aucune donnée de paramétrage trouvée.\nVeuillez configurer l\'application depuis l\'onglet Paramétrage.';
         });
-        widget.onDataLoaded(null, null);
+        widget.onDataLoaded(0, null);
       }
     }
   }

@@ -60,6 +60,21 @@ class _SitesPageState extends State<SitesPage> with FormAutoSyncMixin {
     'Réhabilité',
   ];
 
+  bool _isRestoring = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _latitudeController.addListener(_triggerAutoSave);
+    _longitudeController.addListener(_triggerAutoSave);
+    _nbBlocsController.addListener(_triggerAutoSave);
+    _nbCabinesController.addListener(_triggerAutoSave);
+    _nbDlmController.addListener(_triggerAutoSave);
+    _autresTravauxController.addListener(_triggerAutoSave);
+    _superficieController.addListener(_triggerAutoSave);
+    _observationsController.addListener(_triggerAutoSave);
+  }
+
   @override
   void dispose() {
     _latitudeController.dispose();
@@ -90,6 +105,8 @@ class _SitesPageState extends State<SitesPage> with FormAutoSyncMixin {
     );
     if (data == null || !mounted) return;
 
+    _isRestoring = true;
+
     setState(() {
       _latitudeController.text = data['latitude']?.toString() ?? '';
       _longitudeController.text = data['longitude']?.toString() ?? '';
@@ -110,9 +127,37 @@ class _SitesPageState extends State<SitesPage> with FormAutoSyncMixin {
 
       _isSaved = true;
     });
+
+    _isRestoring = false;
   }
 
   // ── Sauvegarde ────────────────────────────────────────────────────────────
+
+  void _triggerAutoSave() {
+    if (_isRestoring) return;
+
+    onFieldChanged(
+      type: 'sites_assainissement',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => {
+        'latitude': double.tryParse(_latitudeController.text),
+        'longitude': double.tryParse(_longitudeController.text),
+        'nbBlocs': int.tryParse(_nbBlocsController.text),
+        'nbCabines': int.tryParse(_nbCabinesController.text),
+        'nbDlm': int.tryParse(_nbDlmController.text),
+        'autresTravaux': _autresTravauxController.text,
+        'superficie': double.tryParse(_superficieController.text),
+        'observations': _observationsController.text,
+        'typeLatrines': _typeLatrines,
+        'etatSiteActuel': _etatSiteActuel,
+        'destructionAnciennesLatrines': _destructionAnciennesLatrines,
+        'constructionMur': _constructionMur,
+        'trancheesDrainage': _trancheesDrainage,
+        'pointEauLavage': _pointEauLavage,
+      },
+    );
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
@@ -227,13 +272,19 @@ class _SitesPageState extends State<SitesPage> with FormAutoSyncMixin {
                   label: 'Type de latrines',
                   value: _typeLatrines,
                   items: _typesLatrines.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
-                  onChanged: (v) => setState(() => _typeLatrines = v!),
+                  onChanged: (v) {
+                    setState(() => _typeLatrines = v!);
+                    _triggerAutoSave();
+                  },
                 ),
                 AppDropdownField<String>(
                   label: 'État actuel du site',
                   value: _etatSiteActuel,
                   items: _etats.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                  onChanged: (v) => setState(() => _etatSiteActuel = v!),
+                  onChanged: (v) {
+                    setState(() => _etatSiteActuel = v!);
+                    _triggerAutoSave();
+                  },
                 ),
                 AppTextField(
                   label: 'Superficie allouée (m²)',
@@ -268,10 +319,10 @@ class _SitesPageState extends State<SitesPage> with FormAutoSyncMixin {
             AppFormCard(
               children: [
                 const AppSectionTitle(title: 'Travaux associés', icon: Icons.handyman_outlined),
-                _buildCheckbox('Destruction des anciennes latrines', _destructionAnciennesLatrines, (v) => setState(() => _destructionAnciennesLatrines = v!)),
-                _buildCheckbox('Construction d\'un mur de clôture', _constructionMur, (v) => setState(() => _constructionMur = v!)),
-                _buildCheckbox('Tranchées de drainage / évacuation', _trancheesDrainage, (v) => setState(() => _trancheesDrainage = v!)),
-                _buildCheckbox('Point d\'eau / robinetterie dédiée', _pointEauLavage, (v) => setState(() => _pointEauLavage = v!)),
+                _buildCheckbox('Destruction des anciennes latrines', _destructionAnciennesLatrines, (v) { setState(() => _destructionAnciennesLatrines = v!); _triggerAutoSave(); }),
+                _buildCheckbox('Construction d\'un mur de clôture', _constructionMur, (v) { setState(() => _constructionMur = v!); _triggerAutoSave(); }),
+                _buildCheckbox('Tranchées de drainage / évacuation', _trancheesDrainage, (v) { setState(() => _trancheesDrainage = v!); _triggerAutoSave(); }),
+                _buildCheckbox('Point d\'eau / robinetterie dédiée', _pointEauLavage, (v) { setState(() => _pointEauLavage = v!); _triggerAutoSave(); }),
                 const SizedBox(height: 8),
                 AppTextField(
                   label: 'Autres travaux spécifiques',

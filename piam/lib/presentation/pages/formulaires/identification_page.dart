@@ -52,6 +52,7 @@ class _IdentificationPageState extends State<IdentificationPage> with FormAutoSy
 
   // Type d'établissement sélectionné
   String _etablissement = 'Ecole fondamentale';
+  bool _isRestoring = false;
 
   static const List<String> _etablissements = [
     'Ecole fondamentale',
@@ -68,6 +69,17 @@ class _IdentificationPageState extends State<IdentificationPage> with FormAutoSy
   @override
   void initState() {
     super.initState();
+    _codeAnsadeController.addListener(_triggerAutoSave);
+    _intituleProjetController.addListener(_triggerAutoSave);
+    _marcheTravauxController.addListener(_triggerAutoSave);
+    _numeroMarcheController.addListener(_triggerAutoSave);
+    _nomEntrepriseController.addListener(_triggerAutoSave);
+    _delaiMarcheController.addListener(_triggerAutoSave);
+    _bureauControleController.addListener(_triggerAutoSave);
+    _nomControleurController.addListener(_triggerAutoSave);
+    _effectifController.addListener(_triggerAutoSave);
+    _nbPotentielsController.addListener(_triggerAutoSave);
+
     // Le chargement des données sauvegardées se fait dans
     // _onLocaliteChanged() quand l'utilisateur sélectionne une localité,
     // OU au démarrage si le paramétrage a une localité enregistrée
@@ -133,6 +145,8 @@ class _IdentificationPageState extends State<IdentificationPage> with FormAutoSy
 
     if (data == null || !mounted) return;
 
+    _isRestoring = true;
+
     _codeAnsadeController.text = data['codeAnsade'] ?? '';
     _intituleProjetController.text = data['intituleProjet'] ?? '';
     _marcheTravauxController.text = data['marcheTravaux'] ?? '';
@@ -146,8 +160,10 @@ class _IdentificationPageState extends State<IdentificationPage> with FormAutoSy
 
     if (data['typeEtablissement'] != null &&
         _etablissements.contains(data['typeEtablissement'])) {
-      setState(() => _etablissement = data['typeEtablissement']);
+      _etablissement = data['typeEtablissement'];
     }
+
+    _isRestoring = false;
 
     if (mounted) setState(() => _isSaved = true);
   }
@@ -217,6 +233,32 @@ class _IdentificationPageState extends State<IdentificationPage> with FormAutoSy
     _nomControleurController.clear();
     _effectifController.clear();
     _nbPotentielsController.clear();
+  }
+  
+  void _triggerAutoSave() {
+    if (_isRestoring || _selectedLocaliteId == null) return;
+
+    onFieldChanged(
+      type: 'identification',
+      localiteId: _selectedLocaliteId,
+      dataProvider: () => {
+        'wilayaId': _selectedWilayaId,
+        'moughataaId': _selectedMoughataaId,
+        'communeId': _selectedCommuneId,
+        'localiteId': _selectedLocaliteId,
+        'typeEtablissement': _etablissement,
+        'codeAnsade': _codeAnsadeController.text,
+        'intituleProjet': _intituleProjetController.text,
+        'marcheTravaux': _marcheTravauxController.text,
+        'numeroMarche': _numeroMarcheController.text,
+        'nomEntreprise': _nomEntrepriseController.text,
+        'delaiMarche': int.tryParse(_delaiMarcheController.text),
+        'bureauControle': _bureauControleController.text,
+        'nomControleur': _nomControleurController.text,
+        'effectif': int.tryParse(_effectifController.text),
+        'nbPotentiels': int.tryParse(_nbPotentielsController.text),
+      },
+    );
   }
 
   // ── Enregistrement ────────────────────────────────────────────────────────
@@ -413,8 +455,10 @@ class _IdentificationPageState extends State<IdentificationPage> with FormAutoSy
                                   child: Text(e),
                                 ))
                             .toList(),
-                        onChanged: (v) =>
-                            setState(() => _etablissement = v ?? _etablissement),
+                        onChanged: (v) {
+                          setState(() => _etablissement = v ?? _etablissement);
+                          _triggerAutoSave();
+                        },
                       ),
                     ],
                   ),

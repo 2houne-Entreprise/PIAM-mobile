@@ -59,6 +59,8 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> with FormAuto
   String? _typeDLM;
   String? _photoPath;
 
+  bool _isRestoring = false;
+
   // ── Cycle de vie ──────────────────────────────────────────────────────────
 
   @override
@@ -67,6 +69,14 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> with FormAuto
     onSyncStatusChanged = (status) {
       if (mounted) setState(() => _syncStatus = status);
     };
+
+    _dateController.addListener(_triggerAutoSave);
+    _nbTotalController.addListener(_triggerAutoSave);
+    _nbHommesController.addListener(_triggerAutoSave);
+    _nbFemmesController.addListener(_triggerAutoSave);
+    _nbEnfantsController.addListener(_triggerAutoSave);
+    _difficulteEauController.addListener(_triggerAutoSave);
+    _observationsController.addListener(_triggerAutoSave);
   }
 
   @override
@@ -98,6 +108,8 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> with FormAuto
     );
     if (data == null || !mounted) return;
 
+    _isRestoring = true;
+
     _dateController.text = data['dateActivite'] ?? '';
     _nbTotalController.text = data['nbTotal']?.toString() ?? '';
     _nbHommesController.text = data['nbHommes']?.toString() ?? '';
@@ -123,6 +135,8 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> with FormAuto
       _syncStatus = data['_status'] as String?;
       _isSaved = _syncStatus == 'completed' || _syncStatus == 'synced';
     });
+
+    _isRestoring = false;
   }
 
   // ── Enregistrement ────────────────────────────────────────────────────────
@@ -208,6 +222,8 @@ class _EtatLieuxMenagePageState extends State<EtatLieuxMenagePage> with FormAuto
 
   /// Déclenche la sauvegarde automatique du brouillon (debounced).
   void _triggerAutoSave() {
+    if (_isRestoring) return;
+    
     onFieldChanged(
       type: 'etat_lieux_menage',
       localiteId: _localiteId,

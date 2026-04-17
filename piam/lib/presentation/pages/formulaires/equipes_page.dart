@@ -46,6 +46,15 @@ class _EquipesPageState extends State<EquipesPage> with FormAutoSyncMixin {
     'Autre',
   ];
 
+  bool _isRestoring = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _dateDemarrageController.addListener(_triggerAutoSave);
+    _remarquesController.addListener(_triggerAutoSave);
+  }
+
   @override
   void dispose() {
     _dateDemarrageController.dispose();
@@ -70,9 +79,11 @@ class _EquipesPageState extends State<EquipesPage> with FormAutoSyncMixin {
       localiteId: localiteId,
     );
     if (data == null || !mounted) {
-      if (_membres.isEmpty) setState(() => _membres.add(_MembreEquipe()));
+      if (_membres.isEmpty) setState(() => _membres.add(_MembreEquipe(onChanged: _triggerAutoSave)));
       return;
     }
+
+    _isRestoring = true;
 
     setState(() {
       _dateDemarrageController.text = data['dateDemarrage'] ?? '';
@@ -82,7 +93,7 @@ class _EquipesPageState extends State<EquipesPage> with FormAutoSyncMixin {
       _membres.clear();
       if (data['membres'] != null) {
         for (var item in (data['membres'] as List)) {
-          final m = _MembreEquipe();
+          final m = _MembreEquipe(onChanged: _triggerAutoSave);
           m.nomController.text = item['nom'] ?? '';
           m.role = item['role'] ?? 'Maçon';
           m.casque = item['casque'] ?? false;
@@ -92,13 +103,40 @@ class _EquipesPageState extends State<EquipesPage> with FormAutoSyncMixin {
           _membres.add(m);
         }
       }
-      if (_membres.isEmpty) _membres.add(_MembreEquipe());
+      if (_membres.isEmpty) _membres.add(_MembreEquipe(onChanged: _triggerAutoSave));
 
       _isSaved = true;
     });
+
+    _isRestoring = false;
   }
 
   // ── Sauvegarde ────────────────────────────────────────────────────────────
+
+  void _triggerAutoSave() {
+    if (_isRestoring) return;
+
+    final membresJson = _membres.map((m) => {
+      'nom': m.nomController.text,
+      'role': m.role,
+      'casque': m.casque,
+      'gants': m.gants,
+      'chaussures': m.chaussures,
+      'gilet': m.gilet,
+    }).toList();
+
+    onFieldChanged(
+      type: 'equipes_personnel',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => {
+        'dateDemarrage': _dateDemarrageController.text,
+        'premierSecours': _premierSecours,
+        'remarques': _remarquesController.text,
+        'membres': membresJson,
+      },
+    );
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
@@ -188,7 +226,10 @@ class _EquipesPageState extends State<EquipesPage> with FormAutoSyncMixin {
                 SwitchListTile(
                   title: const Text('Trousse de premiers secours disponible', style: TextStyle(fontSize: 14)),
                   value: _premierSecours,
-                  onChanged: (v) => setState(() => _premierSecours = v),
+                  onChanged: (v) {
+                    setState(() => _premierSecours = v);
+                    _triggerAutoSave();
+                  },
                   activeColor: AppTheme.primaryColor,
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -204,7 +245,10 @@ class _EquipesPageState extends State<EquipesPage> with FormAutoSyncMixin {
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.person_add_alt_1_outlined),
                 label: const Text('Ajouter un ouvrier'),
-                onPressed: () => setState(() => _membres.add(_MembreEquipe())),
+                onPressed: () {
+                  setState(() => _membres.add(_MembreEquipe(onChanged: _triggerAutoSave)));
+                  _triggerAutoSave();
+                },
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -258,10 +302,13 @@ class _EquipesPageState extends State<EquipesPage> with FormAutoSyncMixin {
             if (_membres.length > 1)
               IconButton(
                 icon: const Icon(Icons.close, color: AppTheme.errorColor),
-                onPressed: () => setState(() {
-                  _membres[index].dispose();
-                  _membres.removeAt(index);
-                }),
+                onPressed: () {
+                  setState(() {
+                    _membres[index].dispose();
+                    _membres.removeAt(index);
+                  });
+                  _triggerAutoSave();
+                },
               ),
           ],
         ),
@@ -273,7 +320,10 @@ class _EquipesPageState extends State<EquipesPage> with FormAutoSyncMixin {
                 label: 'Rôle',
                 value: membre.role,
                 items: _roles.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
-                onChanged: (v) => setState(() => membre.role = v!),
+                onChanged: (v) {
+                  setState(() => membre.role = v!);
+                  _triggerAutoSave();
+                },
               ),
             ),
             const SizedBox(width: 8),
@@ -286,10 +336,10 @@ class _EquipesPageState extends State<EquipesPage> with FormAutoSyncMixin {
                   Wrap(
                     spacing: 4,
                     children: [
-                      _epiToggle('Casque', membre.casque, (v) => setState(() => membre.casque = v)),
-                      _epiToggle('Gilet', membre.gilet, (v) => setState(() => membre.gilet = v)),
-                      _epiToggle('Gants', membre.gants, (v) => setState(() => membre.gants = v)),
-                      _epiToggle('Chaussures', membre.chaussures, (v) => setState(() => membre.chaussures = v)),
+                      _epiToggle('Casque', membre.casque, (v) { setState(() => membre.casque = v); _triggerAutoSave(); }),
+                      _epiToggle('Gilet', membre.gilet, (v) { setState(() => membre.gilet = v); _triggerAutoSave(); }),
+                      _epiToggle('Gants', membre.gants, (v) { setState(() => membre.gants = v); _triggerAutoSave(); }),
+                      _epiToggle('Chaussures', membre.chaussures, (v) { setState(() => membre.chaussures = v); _triggerAutoSave(); }),
                     ],
                   ),
                 ],
@@ -320,6 +370,12 @@ class _MembreEquipe {
   bool gants = false;
   bool chaussures = false;
   bool gilet = false;
+
+  _MembreEquipe({VoidCallback? onChanged}) {
+    if (onChanged != null) {
+      nomController.addListener(onChanged);
+    }
+  }
 
   void dispose() {
     nomController.dispose();

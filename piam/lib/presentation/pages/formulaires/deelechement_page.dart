@@ -34,7 +34,15 @@ class _DeeclenchementPageState extends State<DeeclenchementPage>
   int? _localiteId;
   dynamic _userId;
 
+  bool _isRestoring = false;
+
   // ── Cycle de vie ──────────────────────────────────────────────────────────
+
+  @override
+  void initState() {
+    super.initState();
+    _dateController.addListener(_triggerAutoSave);
+  }
 
   @override
   void dispose() {
@@ -61,11 +69,27 @@ class _DeeclenchementPageState extends State<DeeclenchementPage>
 
     if (data == null || !mounted) return;
 
+    _isRestoring = true;
     _dateController.text = data['date_activite'] ?? '';
+    _isRestoring = false;
+
     if (mounted) setState(() => _isSaved = true);
   }
 
   // ── Enregistrement ────────────────────────────────────────────────────────
+
+  void _triggerAutoSave() {
+    if (_isRestoring) return;
+
+    onFieldChanged(
+      type: 'declenchement',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => {
+        'date_activite': _dateController.text,
+      },
+    );
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;

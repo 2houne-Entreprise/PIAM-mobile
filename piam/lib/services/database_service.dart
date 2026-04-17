@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../data/reference_data.dart';
 
 /// Service principal d'accès à la base de données SQLite locale.
@@ -134,6 +135,7 @@ class DatabaseService {
 
   /// Peuple les tables administratives depuis les données statiques de [ReferenceData].
   Future<void> seedFromReferenceData() async {
+    if (kIsWeb) return;
     final db = await database;
 
     for (final item in ReferenceData.wilayas) {
@@ -194,11 +196,26 @@ class DatabaseService {
   // ── Géo (lecture) ─────────────────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getWilayas() async {
+    if (kIsWeb) {
+      return ReferenceData.wilayas.map((e) => <String, dynamic>{
+        'id': e['id'],
+        'nom': e['intitule_fr'] ?? e['intitule'],
+        'code': e['code']?.toString(),
+      }).toList()..sort((a, b) => (a['nom'] as String).compareTo(b['nom'] as String));
+    }
     final db = await database;
     return db.query('wilayas', orderBy: 'nom');
   }
 
   Future<List<Map<String, dynamic>>> getMoughataas(int wilayaId) async {
+    if (kIsWeb) {
+      return ReferenceData.moughatas.where((e) => e['wilaya_id'] == wilayaId).map((e) => <String, dynamic>{
+        'id': e['id'],
+        'nom': e['intitule_fr'] ?? e['intitule'],
+        'wilaya_id': e['wilaya_id'],
+        'code': e['code']?.toString(),
+      }).toList()..sort((a, b) => (a['nom'] as String).compareTo(b['nom'] as String));
+    }
     final db = await database;
     return db.query(
       'moughataas',
@@ -209,6 +226,14 @@ class DatabaseService {
   }
 
   Future<List<Map<String, dynamic>>> getCommunes(int moughataaId) async {
+    if (kIsWeb) {
+      return ReferenceData.communes.where((e) => e['moughata_id'] == moughataaId).map((e) => <String, dynamic>{
+        'id': e['id'],
+        'nom': e['intitule_fr'] ?? e['intitule'],
+        'moughataa_id': e['moughata_id'],
+        'code': e['code']?.toString(),
+      }).toList()..sort((a, b) => (a['nom'] as String).compareTo(b['nom'] as String));
+    }
     final db = await database;
     return db.query(
       'communes',
@@ -219,6 +244,17 @@ class DatabaseService {
   }
 
   Future<List<Map<String, dynamic>>> getLocalites(int communeId) async {
+    if (kIsWeb) {
+      return ReferenceData.localites.where((e) => e['commune_id'] == communeId).map((e) => <String, dynamic>{
+        'id': e['id'],
+        'nom': e['intitule_fr'] ?? e['intitule'],
+        'commune_id': e['commune_id'],
+        'moughataa_id': e['moughata_id'],
+        'wilaya_id': e['wilaya_id'],
+        'gps_lat': e['gps_lat'],
+        'gps_lng': e['gps_lng'],
+      }).toList()..sort((a, b) => (a['nom'] as String).compareTo(b['nom'] as String));
+    }
     final db = await database;
     return db.query(
       'localites',
@@ -231,24 +267,28 @@ class DatabaseService {
   // ── Géo (écriture) ────────────────────────────────────────────────────────
 
   Future<int> insertWilaya(Map<String, dynamic> data) async {
+    if (kIsWeb) return 1;
     final db = await database;
     return db.insert('wilayas', data,
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<int> insertMoughataa(Map<String, dynamic> data) async {
+    if (kIsWeb) return 1;
     final db = await database;
     return db.insert('moughataas', data,
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<int> insertCommune(Map<String, dynamic> data) async {
+    if (kIsWeb) return 1;
     final db = await database;
     return db.insert('communes', data,
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<int> insertLocalite(Map<String, dynamic> data) async {
+    if (kIsWeb) return 1;
     final db = await database;
     return db.insert('localites', data,
         conflictAlgorithm: ConflictAlgorithm.replace);
@@ -399,8 +439,27 @@ class DatabaseService {
   Future<Map<String, dynamic>?> getQuestionnaire({
     required String type,
     required int? localiteId,
+    String? niveau,
   }) async {
-    if (localiteId == null) return null;
+    // ── INTERCEPTION HIVE (Drafts) ──────────────────────────────────────────
+    try {
+      if (Hive.isBoxOpen('form_drafts')) {
+        final box = Hive.box('form_drafts');
+        final key = type; // Clé simplifiée (type uniquement)
+        
+        final draftData = box.get(key);
+        if (draftData != null) {
+          // On a trouvé un brouillon récent dans Hive
+          final Map<String, dynamic> hiveMap = Map<String, dynamic>.from(draftData);
+          hiveMap['_status'] = 'draft';
+          debugPrint('[DatabaseService] Chargement du draft depuis Hive pour $key');
+          return hiveMap;
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService] Erreur lors de la lecture depuis Hive : $e');
+    }
+    // ──────────────────────────────────────────────────────────────────────
 
     if (kIsWeb) {
       final p = await _prefs;
@@ -495,6 +554,19 @@ class DatabaseService {
   }
 
   Future<int> updateQuestionnaireSyncStatus(int id, String status) async {
+    if (kIsWeb) {
+      final p = await _prefs;
+      final existingStr = p.getString(_keyQuestionnaires) ?? '[]';
+      final List<dynamic> list = jsonDecode(existingStr);
+      for (var i = 0; i < list.length; i++) {
+        if (list[i]['id'] == id) {
+          list[i]['sync_status'] = status;
+          await p.setString(_keyQuestionnaires, jsonEncode(list));
+          return 1;
+        }
+      }
+      return 0;
+    }
     final db = await database;
     return db.update(
       'questionnaires',
@@ -545,6 +617,7 @@ class DatabaseService {
   // ── Seed (méthodes JSON) ──────────────────────────────────────────────────
 
   Future<void> seedWilayas(String jsonData) async {
+    if (kIsWeb) return;
     final db = await database;
     final List<dynamic> data = json.decode(jsonData);
     for (final item in data) {
@@ -561,6 +634,7 @@ class DatabaseService {
   }
 
   Future<void> seedMoughataas(String jsonData) async {
+    if (kIsWeb) return;
     final db = await database;
     final List<dynamic> data = json.decode(jsonData);
     for (final item in data) {
@@ -578,6 +652,7 @@ class DatabaseService {
   }
 
   Future<void> seedCommunes(String jsonData) async {
+    if (kIsWeb) return;
     final db = await database;
     final List<dynamic> data = json.decode(jsonData);
     for (final item in data) {
@@ -595,6 +670,7 @@ class DatabaseService {
   }
 
   Future<void> seedLocalites(String jsonData) async {
+    if (kIsWeb) return;
     final db = await database;
     final List<dynamic> data = json.decode(jsonData);
     for (final item in data) {

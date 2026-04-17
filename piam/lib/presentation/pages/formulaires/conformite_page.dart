@@ -39,8 +39,18 @@ class _ConformitePageState extends State<ConformitePage> with FormAutoSyncMixin 
     'Fonds mobilisés ailleurs',
     'Administration en retard',
     'Problème foncier / Conflits',
+    'Problème foncier / Conflits',
     'Autre (spécifier)',
   ];
+
+  bool _isRestoring = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _dateCertificationController.addListener(_triggerAutoSave);
+    _remarqueNonController.addListener(_triggerAutoSave);
+  }
 
   @override
   void dispose() {
@@ -66,6 +76,8 @@ class _ConformitePageState extends State<ConformitePage> with FormAutoSyncMixin 
     );
     if (data == null || !mounted) return;
 
+    _isRestoring = true;
+
     setState(() {
       _dateCertificationController.text = data['dateCertification'] ?? '';
       _remarqueNonController.text = data['remarqueNon'] ?? '';
@@ -78,9 +90,27 @@ class _ConformitePageState extends State<ConformitePage> with FormAutoSyncMixin 
 
       _isSaved = true;
     });
+
+    _isRestoring = false;
   }
 
   // ── Sauvegarde ────────────────────────────────────────────────────────────
+
+  void _triggerAutoSave() {
+    if (_isRestoring) return;
+
+    onFieldChanged(
+      type: 'conformite_fdal',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => {
+        'dateCertification': _dateCertificationController.text,
+        'certifie': _certifie,
+        'raisonsNon': _raisonsNon,
+        'remarqueNon': _remarqueNonController.text,
+      },
+    );
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
@@ -168,7 +198,10 @@ class _ConformitePageState extends State<ConformitePage> with FormAutoSyncMixin 
                         value: true,
                         groupValue: _certifie,
                         activeColor: AppTheme.successColor,
-                        onChanged: (v) => setState(() => _certifie = v),
+                        onChanged: (v) {
+                          setState(() => _certifie = v);
+                          _triggerAutoSave();
+                        },
                       ),
                     ),
                     Expanded(
@@ -177,7 +210,10 @@ class _ConformitePageState extends State<ConformitePage> with FormAutoSyncMixin 
                         value: false,
                         groupValue: _certifie,
                         activeColor: AppTheme.errorColor,
-                        onChanged: (v) => setState(() => _certifie = v),
+                        onChanged: (v) {
+                          setState(() => _certifie = v);
+                          _triggerAutoSave();
+                        },
                       ),
                     ),
                   ],
@@ -200,6 +236,7 @@ class _ConformitePageState extends State<ConformitePage> with FormAutoSyncMixin 
                             if (checked == true) _raisonsNon.add(opt);
                             else _raisonsNon.remove(opt);
                           });
+                          _triggerAutoSave();
                         },
                         controlAffinity: ListTileControlAffinity.leading,
                         dense: true,

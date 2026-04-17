@@ -45,6 +45,17 @@ class _RapportsPageState extends State<RapportsPage> with FormAutoSyncMixin {
   };
 
   int _noteGlobale = 3; // 1-5
+  bool _isRestoring = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _dateVisiteController.addListener(_triggerAutoSave);
+    _travauxRealisesController.addListener(_triggerAutoSave);
+    _nonConformitesController.addListener(_triggerAutoSave);
+    _mesuresCorrectivesController.addListener(_triggerAutoSave);
+    _recommandationsController.addListener(_triggerAutoSave);
+  }
 
   @override
   void dispose() {
@@ -73,6 +84,8 @@ class _RapportsPageState extends State<RapportsPage> with FormAutoSyncMixin {
     );
     if (data == null || !mounted) return;
 
+    _isRestoring = true;
+
     setState(() {
       _dateVisiteController.text = data['dateVisite'] ?? '';
       _travauxRealisesController.text = data['travauxRealises'] ?? '';
@@ -91,9 +104,30 @@ class _RapportsPageState extends State<RapportsPage> with FormAutoSyncMixin {
 
       _isSaved = true;
     });
+
+    _isRestoring = false;
   }
 
   // ── Sauvegarde ────────────────────────────────────────────────────────────
+
+  void _triggerAutoSave() {
+    if (_isRestoring) return;
+
+    onFieldChanged(
+      type: 'rapport_controle',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => {
+        'dateVisite': _dateVisiteController.text,
+        'travauxRealises': _travauxRealisesController.text,
+        'nonConformites': _nonConformitesController.text,
+        'mesuresCorrectives': _mesuresCorrectivesController.text,
+        'recommandations': _recommandationsController.text,
+        'noteGlobale': _noteGlobale,
+        'conformites': _conformites,
+      },
+    );
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
@@ -201,7 +235,10 @@ class _RapportsPageState extends State<RapportsPage> with FormAutoSyncMixin {
                     iconSize: 36,
                     icon: Icon(i < _noteGlobale ? Icons.star_rounded : Icons.star_outline_rounded),
                     color: Colors.amber,
-                    onPressed: () => setState(() => _noteGlobale = i + 1),
+                    onPressed: () { 
+                      setState(() => _noteGlobale = i + 1);
+                      _triggerAutoSave();
+                    },
                   )),
                 ),
               ],
@@ -262,9 +299,9 @@ class _RapportsPageState extends State<RapportsPage> with FormAutoSyncMixin {
           Wrap(
             spacing: 8,
             children: [
-              _statusChip(Icons.check_circle_outline, Colors.green, val == true, () => setState(() => _conformites[critere] = true)),
-              _statusChip(Icons.remove_circle_outline, Colors.grey, val == null, () => setState(() => _conformites[critere] = null)),
-              _statusChip(Icons.error_outline, Colors.red, val == false, () => setState(() => _conformites[critere] = false)),
+              _statusChip(Icons.check_circle_outline, Colors.green, val == true, () { setState(() => _conformites[critere] = true); _triggerAutoSave(); }),
+              _statusChip(Icons.remove_circle_outline, Colors.grey, val == null, () { setState(() => _conformites[critere] = null); _triggerAutoSave(); }),
+              _statusChip(Icons.error_outline, Colors.red, val == false, () { setState(() => _conformites[critere] = false); _triggerAutoSave(); }),
             ],
           ),
         ],

@@ -72,7 +72,34 @@ class _DernierSuiviLocalitePageState
   final _nbDlmEauSansSavonCtr = TextEditingController();
   final _nbMenagesSansDLMCtr = TextEditingController();
 
+  bool _isRestoring = false;
+
   // ── Cycle de vie ──────────────────────────────────────────────────────────
+
+  @override
+  void initState() {
+    super.initState();
+    _dateController.addListener(_triggerAutoSave);
+    _nbMenagesEnquetesController.addListener(_triggerAutoSave);
+    _nbTotalLatrinesController.addListener(_triggerAutoSave);
+    _nbLatrinesAmelioreesCtr.addListener(_triggerAutoSave);
+    _nbLatrinesNonAmelioreesCtr.addListener(_triggerAutoSave);
+    _nbLatrinesAmelioreesHygieniqueCtr.addListener(_triggerAutoSave);
+    _nbLatrinesAmelioreesParageesCtr.addListener(_triggerAutoSave);
+    _nbLatrinesNonFonctionellesCtr.addListener(_triggerAutoSave);
+    _nbLatrinesEndommaggersCtr.addListener(_triggerAutoSave);
+    _nbMenagesUtilisantVoisinCtr.addListener(_triggerAutoSave);
+    _nbMenagesDALCtr.addListener(_triggerAutoSave);
+    _nbNouvellesLatrinesCtr.addListener(_triggerAutoSave);
+    _nbLatrinesAutofinanceesCtr.addListener(_triggerAutoSave);
+    _nbLatrinesAideExterieureCtr.addListener(_triggerAutoSave);
+    _nbLatrinesFinanceesCommunauteCtr.addListener(_triggerAutoSave);
+    _montantInvestiMenagesCtr.addListener(_triggerAutoSave);
+    _nbLatrinesDLMCtr.addListener(_triggerAutoSave);
+    _nbDlmEauSavonCtr.addListener(_triggerAutoSave);
+    _nbDlmEauSansSavonCtr.addListener(_triggerAutoSave);
+    _nbMenagesSansDLMCtr.addListener(_triggerAutoSave);
+  }
 
   @override
   void dispose() {
@@ -125,6 +152,8 @@ class _DernierSuiviLocalitePageState
 
     if (data == null || !mounted) return;
 
+    _isRestoring = true;
+
     // Remplir les controllers avec les valeurs sauvegardées
     _dateController.text = data['dateActivite'] ?? '';
     _nbMenagesEnquetesController.text = data['nbMenagesEnquetes']?.toString() ?? '';
@@ -147,12 +176,46 @@ class _DernierSuiviLocalitePageState
     _nbDlmEauSansSavonCtr.text = data['nbDlmEauSansSavon']?.toString() ?? '';
     _nbMenagesSansDLMCtr.text = data['nbMenagesSansDLM']?.toString() ?? '';
 
+    _isRestoring = false;
+
     if (mounted) {
       setState(() => _isSaved = true);
     }
   }
 
   // ── Enregistrement ────────────────────────────────────────────────────────
+
+  void _triggerAutoSave() {
+    if (_isRestoring) return;
+
+    onFieldChanged(
+      type: 'dernier_suivi_localite',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => {
+        'dateActivite': _dateController.text,
+        'nbMenagesEnquetes': int.tryParse(_nbMenagesEnquetesController.text),
+        'nbTotalLatrines': int.tryParse(_nbTotalLatrinesController.text),
+        'nbLatrinesAmeliorees': int.tryParse(_nbLatrinesAmelioreesCtr.text),
+        'nbLatrinesNonAmeliorees': int.tryParse(_nbLatrinesNonAmelioreesCtr.text),
+        'nbLatrinesAmelioreesHygienique': int.tryParse(_nbLatrinesAmelioreesHygieniqueCtr.text),
+        'nbLatrinesAmelioreesPartagees': int.tryParse(_nbLatrinesAmelioreesParageesCtr.text),
+        'nbLatrinesNonFonctionnelles': int.tryParse(_nbLatrinesNonFonctionellesCtr.text),
+        'nbLatrinesEndommagees': int.tryParse(_nbLatrinesEndommaggersCtr.text),
+        'nbMenagesUtilisantVoisin': int.tryParse(_nbMenagesUtilisantVoisinCtr.text),
+        'nbMenagesDAL': int.tryParse(_nbMenagesDALCtr.text),
+        'nbNouvellesLatrinesConstruites': int.tryParse(_nbNouvellesLatrinesCtr.text),
+        'nbLatrinesAutofinancees': int.tryParse(_nbLatrinesAutofinanceesCtr.text),
+        'nbLatrinesAideExterieure': int.tryParse(_nbLatrinesAideExterieureCtr.text),
+        'nbLatrinesFinanceesCommunaute': int.tryParse(_nbLatrinesFinanceesCommunauteCtr.text),
+        'montantInvestiMenages': double.tryParse(_montantInvestiMenagesCtr.text.replaceAll(',', '.')),
+        'nbLatrinesDLM': int.tryParse(_nbLatrinesDLMCtr.text),
+        'nbDlmEauSavon': int.tryParse(_nbDlmEauSavonCtr.text),
+        'nbDlmEauSansSavon': int.tryParse(_nbDlmEauSansSavonCtr.text),
+        'nbMenagesSansDLM': int.tryParse(_nbMenagesSansDLMCtr.text),
+      },
+    );
+  }
 
   /// Valide le formulaire et sauvegarde les données dans SQLite.
   ///

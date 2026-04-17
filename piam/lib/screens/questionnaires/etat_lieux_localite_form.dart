@@ -16,81 +16,155 @@ class _EtatLieuxLocaliteFormState extends State<EtatLieuxLocaliteForm> {
   double? latitude;
   double? longitude;
   DateTime? dateActivite;
-  String? observations;
-
-  // Champs spécifiques
-  int? populationTotale;
-  int? nbHommes;
-  int? nbFemmes;
-  int? nbEnfantsMoins5;
-  int? nbMenages;
   bool? accesEau;
-  int? nbLatrinesFamiliales;
-  int? nbLatrinesAmeliorees;
-  int? nbLatrinesNonAmeliorees;
-  int? nbLatrinesEndommagees;
-  int? nbMenagesUtilisantLatrinesVoisin;
-  int? nbMenagesDefecationAirLibre;
-  int? nbLatrinesAvecDLM;
-  int? nbAvecEauSavon;
-  int? nbAvecEauSansSavon;
-  int? nbMenagesSansDLM;
+
+  // Controllers pour pré-remplissage
+  final _observationsController = TextEditingController();
+  final _populationTotaleController = TextEditingController();
+  final _nbHommesController = TextEditingController();
+  final _nbFemmesController = TextEditingController();
+  final _nbEnfantsMoins5Controller = TextEditingController();
+  final _nbMenagesController = TextEditingController();
+  final _nbLatrinesFamilialesController = TextEditingController();
+  final _nbLatrinesAmelioreesController = TextEditingController();
+  final _nbLatrinesNonAmelioreesController = TextEditingController();
+  final _nbLatrinesEndommageeController = TextEditingController();
+  final _nbMenagesUtilisantLatrinesVoisinController = TextEditingController();
+  final _nbMenagesDefecationAirLibreController = TextEditingController();
+  final _nbLatrinesAvecDLMController = TextEditingController();
+  final _nbAvecEauSavonController = TextEditingController();
+  final _nbAvecEauSansSavonController = TextEditingController();
+  final _nbMenagesSansDLMController = TextEditingController();
+
+  final _db = DatabaseService();
+  static const String _formType = 'etat_lieux_localite';
+
+  int? get _localiteId => _adminData?['localite_id'] as int?;
 
   @override
   void initState() {
     super.initState();
-    _loadAdminData();
+    _initialize();
   }
 
-  Future<void> _loadAdminData() async {
-    final db = DatabaseService();
-    final param = await db.getParametreUtilisateur();
+  @override
+  void dispose() {
+    _observationsController.dispose();
+    _populationTotaleController.dispose();
+    _nbHommesController.dispose();
+    _nbFemmesController.dispose();
+    _nbEnfantsMoins5Controller.dispose();
+    _nbMenagesController.dispose();
+    _nbLatrinesFamilialesController.dispose();
+    _nbLatrinesAmelioreesController.dispose();
+    _nbLatrinesNonAmelioreesController.dispose();
+    _nbLatrinesEndommageeController.dispose();
+    _nbMenagesUtilisantLatrinesVoisinController.dispose();
+    _nbMenagesDefecationAirLibreController.dispose();
+    _nbLatrinesAvecDLMController.dispose();
+    _nbAvecEauSavonController.dispose();
+    _nbAvecEauSansSavonController.dispose();
+    _nbMenagesSansDLMController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initialize() async {
+    final param = await _db.getParametreUtilisateur();
     setState(() {
       _adminData = param;
       latitude = param?['gps_lat'];
       longitude = param?['gps_lng'];
       dateActivite = DateTime.now();
-      _loading = false;
     });
+    await _loadDraft();
+    setState(() => _loading = false);
+  }
+
+  /// Charge le brouillon et pré-remplit tous les champs
+  Future<void> _loadDraft() async {
+    final draft = await _db.getQuestionnaire(
+      type: _formType,
+      localiteId: _localiteId,
+    );
+    if (draft == null) return;
+
+    _observationsController.text = draft['observations'] ?? '';
+    _populationTotaleController.text = draft['population_totale']?.toString() ?? '';
+    _nbHommesController.text = draft['nb_hommes']?.toString() ?? '';
+    _nbFemmesController.text = draft['nb_femmes']?.toString() ?? '';
+    _nbEnfantsMoins5Controller.text = draft['nb_enfants_moins_5']?.toString() ?? '';
+    _nbMenagesController.text = draft['nb_menages']?.toString() ?? '';
+    _nbLatrinesFamilialesController.text = draft['nb_latrines_familiales']?.toString() ?? '';
+    _nbLatrinesAmelioreesController.text = draft['nb_latrines_ameliorees']?.toString() ?? '';
+    _nbLatrinesNonAmelioreesController.text = draft['nb_latrines_non_ameliorees']?.toString() ?? '';
+    _nbLatrinesEndommageeController.text = draft['nb_latrines_endommagees']?.toString() ?? '';
+    _nbMenagesUtilisantLatrinesVoisinController.text =
+        draft['nb_menages_utilisant_latrines_voisin']?.toString() ?? '';
+    _nbMenagesDefecationAirLibreController.text =
+        draft['nb_menages_defecation_air_libre']?.toString() ?? '';
+    _nbLatrinesAvecDLMController.text = draft['nb_latrines_avec_dlm']?.toString() ?? '';
+    _nbAvecEauSavonController.text = draft['nb_avec_eau_savon']?.toString() ?? '';
+    _nbAvecEauSansSavonController.text = draft['nb_avec_eau_sans_savon']?.toString() ?? '';
+    _nbMenagesSansDLMController.text = draft['nb_menages_sans_dlm']?.toString() ?? '';
+
+    if (draft['acces_eau'] != null) {
+      accesEau = draft['acces_eau'] == true || draft['acces_eau'] == 1;
+    }
+    if (draft['date_activite'] != null) {
+      try {
+        dateActivite = DateTime.parse(draft['date_activite']);
+      } catch (_) {}
+    }
+    if (mounted) setState(() {});
+  }
+
+  Map<String, dynamic> _buildDataMap() => {
+        'wilaya_id': _adminData?['wilaya_id'],
+        'moughataa_id': _adminData?['moughataa_id'],
+        'commune_id': _adminData?['commune_id'],
+        'localite_id': _localiteId,
+        'gps_lat': latitude,
+        'gps_lng': longitude,
+        'date_activite': dateActivite?.toIso8601String(),
+        'observations': _observationsController.text,
+        'population_totale': int.tryParse(_populationTotaleController.text),
+        'nb_hommes': int.tryParse(_nbHommesController.text),
+        'nb_femmes': int.tryParse(_nbFemmesController.text),
+        'nb_enfants_moins_5': int.tryParse(_nbEnfantsMoins5Controller.text),
+        'nb_menages': int.tryParse(_nbMenagesController.text),
+        'acces_eau': accesEau,
+        'nb_latrines_familiales': int.tryParse(_nbLatrinesFamilialesController.text),
+        'nb_latrines_ameliorees': int.tryParse(_nbLatrinesAmelioreesController.text),
+        'nb_latrines_non_ameliorees': int.tryParse(_nbLatrinesNonAmelioreesController.text),
+        'nb_latrines_endommagees': int.tryParse(_nbLatrinesEndommageeController.text),
+        'nb_menages_utilisant_latrines_voisin':
+            int.tryParse(_nbMenagesUtilisantLatrinesVoisinController.text),
+        'nb_menages_defecation_air_libre':
+            int.tryParse(_nbMenagesDefecationAirLibreController.text),
+        'nb_latrines_avec_dlm': int.tryParse(_nbLatrinesAvecDLMController.text),
+        'nb_avec_eau_savon': int.tryParse(_nbAvecEauSavonController.text),
+        'nb_avec_eau_sans_savon': int.tryParse(_nbAvecEauSansSavonController.text),
+        'nb_menages_sans_dlm': int.tryParse(_nbMenagesSansDLMController.text),
+      };
+
+  Future<void> _saveDraft() async {
+    if (_localiteId == null) return;
+    await _db.upsertQuestionnaire(
+      type: _formType,
+      localiteId: _localiteId,
+      status: 'draft',
+      dataMap: _buildDataMap(),
+    );
   }
 
   Future<void> _saveForm() async {
     if (dateActivite == null) return;
-    final db = DatabaseService();
-    final data = {
-      'wilaya_id': _adminData?['wilaya_id'],
-      'moughataa_id': _adminData?['moughataa_id'],
-      'commune_id': _adminData?['commune_id'],
-      'localite_id': _adminData?['localite_id'],
-      'gps_lat': latitude,
-      'gps_lng': longitude,
-      'date_activite': dateActivite?.toIso8601String(),
-      'observations': observations,
-      'population_totale': populationTotale,
-      'nb_hommes': nbHommes,
-      'nb_femmes': nbFemmes,
-      'nb_enfants_moins_5': nbEnfantsMoins5,
-      'nb_menages': nbMenages,
-      'acces_eau': accesEau,
-      'nb_latrines_familiales': nbLatrinesFamiliales,
-      'nb_latrines_ameliorees': nbLatrinesAmeliorees,
-      'nb_latrines_non_ameliorees': nbLatrinesNonAmeliorees,
-      'nb_latrines_endommagees': nbLatrinesEndommagees,
-      'nb_menages_utilisant_latrines_voisin': nbMenagesUtilisantLatrinesVoisin,
-      'nb_menages_defecation_air_libre': nbMenagesDefecationAirLibre,
-      'nb_latrines_avec_dlm': nbLatrinesAvecDLM,
-      'nb_avec_eau_savon': nbAvecEauSavon,
-      'nb_avec_eau_sans_savon': nbAvecEauSansSavon,
-      'nb_menages_sans_dlm': nbMenagesSansDLM,
-    };
-    await db.insertQuestionnaire({
-      'type': 'État des lieux localité',
-      'data_json': data.toString(),
-      'date': dateActivite?.toIso8601String(),
-      'localite_id': _adminData?['localite_id'],
-      'sync_status': 'local',
-      'photo_path': null,
-    });
+    await _db.upsertQuestionnaire(
+      type: _formType,
+      localiteId: _localiteId,
+      status: 'completed',
+      dataMap: _buildDataMap(),
+    );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('État des lieux localité enregistré.')),
@@ -113,11 +187,11 @@ class _EtatLieuxLocaliteFormState extends State<EtatLieuxLocaliteForm> {
             Text('Wilaya: ${_adminData?['wilaya_id'] ?? '-'}'),
             Text('Moughataa: ${_adminData?['moughataa_id'] ?? '-'}'),
             Text('Commune: ${_adminData?['commune_id'] ?? '-'}'),
-            Text('Localité: ${_adminData?['localite_id'] ?? '-'}'),
+            Text('Localité: ${_localiteId ?? '-'}'),
             Text('GPS: ${latitude ?? '-'}, ${longitude ?? '-'}'),
             const SizedBox(height: 16),
             ListTile(
-              title: const Text('Date de l’activité'),
+              title: const Text('Date de l\'activité'),
               subtitle: Text(
                 dateActivite != null
                     ? DateFormat('yyyy-MM-dd').format(dateActivite!)
@@ -134,122 +208,122 @@ class _EtatLieuxLocaliteFormState extends State<EtatLieuxLocaliteForm> {
                   );
                   if (picked != null) {
                     setState(() => dateActivite = picked);
+                    _saveDraft();
                   }
                 },
               ),
             ),
             const SizedBox(height: 16),
             TextFormField(
+              controller: _observationsController,
               decoration: const InputDecoration(labelText: 'Observations'),
               maxLines: 3,
-              onChanged: (v) => observations = v,
+              onChanged: (_) => _saveDraft(),
             ),
             const SizedBox(height: 16),
             TextFormField(
+              controller: _populationTotaleController,
               decoration: const InputDecoration(labelText: 'Population totale'),
               keyboardType: TextInputType.number,
-              onChanged: (v) => populationTotale = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             TextFormField(
-              decoration: const InputDecoration(labelText: 'Nombre d’hommes'),
+              controller: _nbHommesController,
+              decoration: const InputDecoration(labelText: 'Nombre d\'hommes'),
               keyboardType: TextInputType.number,
-              onChanged: (v) => nbHommes = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             TextFormField(
+              controller: _nbFemmesController,
               decoration: const InputDecoration(labelText: 'Nombre de femmes'),
               keyboardType: TextInputType.number,
-              onChanged: (v) => nbFemmes = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             TextFormField(
-              decoration: const InputDecoration(
-                labelText: 'Nombre d’enfants < 5 ans',
-              ),
+              controller: _nbEnfantsMoins5Controller,
+              decoration: const InputDecoration(labelText: 'Nombre d\'enfants < 5 ans'),
               keyboardType: TextInputType.number,
-              onChanged: (v) => nbEnfantsMoins5 = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             TextFormField(
+              controller: _nbMenagesController,
               decoration: const InputDecoration(labelText: 'Nombre de ménages'),
               keyboardType: TextInputType.number,
-              onChanged: (v) => nbMenages = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             SwitchListTile(
-              title: const Text('Accès à l’eau'),
+              title: const Text('Accès à l\'eau'),
               value: accesEau ?? false,
-              onChanged: (v) => setState(() => accesEau = v),
+              onChanged: (v) {
+                setState(() => accesEau = v);
+                _saveDraft();
+              },
             ),
             TextFormField(
-              decoration: const InputDecoration(
-                labelText: 'Nombre total de latrines familiales',
-              ),
+              controller: _nbLatrinesFamilialesController,
+              decoration: const InputDecoration(labelText: 'Nombre total de latrines familiales'),
               keyboardType: TextInputType.number,
-              onChanged: (v) => nbLatrinesFamiliales = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             TextFormField(
-              decoration: const InputDecoration(
-                labelText: 'Nombre de latrines améliorées',
-              ),
+              controller: _nbLatrinesAmelioreesController,
+              decoration: const InputDecoration(labelText: 'Nombre de latrines améliorées'),
               keyboardType: TextInputType.number,
-              onChanged: (v) => nbLatrinesAmeliorees = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             TextFormField(
-              decoration: const InputDecoration(
-                labelText: 'Nombre de latrines non améliorées',
-              ),
+              controller: _nbLatrinesNonAmelioreesController,
+              decoration: const InputDecoration(labelText: 'Nombre de latrines non améliorées'),
               keyboardType: TextInputType.number,
-              onChanged: (v) => nbLatrinesNonAmeliorees = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             TextFormField(
-              decoration: const InputDecoration(
-                labelText: 'Nombre de latrines endommagées',
-              ),
+              controller: _nbLatrinesEndommageeController,
+              decoration: const InputDecoration(labelText: 'Nombre de latrines endommagées'),
               keyboardType: TextInputType.number,
-              onChanged: (v) => nbLatrinesEndommagees = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             TextFormField(
+              controller: _nbMenagesUtilisantLatrinesVoisinController,
               decoration: const InputDecoration(
-                labelText:
-                    'Nombre de ménages utilisant les latrines des voisins',
+                labelText: 'Nombre de ménages utilisant les latrines des voisins',
               ),
               keyboardType: TextInputType.number,
-              onChanged: (v) =>
-                  nbMenagesUtilisantLatrinesVoisin = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             TextFormField(
+              controller: _nbMenagesDefecationAirLibreController,
               decoration: const InputDecoration(
-                labelText:
-                    'Nombre de ménages pratiquant la défécation à l’air libre',
+                labelText: 'Nombre de ménages pratiquant la défécation à l\'air libre',
               ),
               keyboardType: TextInputType.number,
-              onChanged: (v) => nbMenagesDefecationAirLibre = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             TextFormField(
+              controller: _nbLatrinesAvecDLMController,
               decoration: const InputDecoration(
-                labelText:
-                    'Nombre de latrines avec dispositif de lavage des mains',
+                labelText: 'Nombre de latrines avec dispositif de lavage des mains',
               ),
               keyboardType: TextInputType.number,
-              onChanged: (v) => nbLatrinesAvecDLM = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             TextFormField(
-              decoration: const InputDecoration(
-                labelText: 'Nombre avec eau + savon',
-              ),
+              controller: _nbAvecEauSavonController,
+              decoration: const InputDecoration(labelText: 'Nombre avec eau + savon'),
               keyboardType: TextInputType.number,
-              onChanged: (v) => nbAvecEauSavon = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             TextFormField(
-              decoration: const InputDecoration(
-                labelText: 'Nombre avec eau sans savon',
-              ),
+              controller: _nbAvecEauSansSavonController,
+              decoration: const InputDecoration(labelText: 'Nombre avec eau sans savon'),
               keyboardType: TextInputType.number,
-              onChanged: (v) => nbAvecEauSansSavon = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             TextFormField(
-              decoration: const InputDecoration(
-                labelText: 'Nombre de ménages sans dispositif',
-              ),
+              controller: _nbMenagesSansDLMController,
+              decoration: const InputDecoration(labelText: 'Nombre de ménages sans dispositif'),
               keyboardType: TextInputType.number,
-              onChanged: (v) => nbMenagesSansDLM = int.tryParse(v),
+              onChanged: (_) => _saveDraft(),
             ),
             const SizedBox(height: 24),
             ElevatedButton(onPressed: _saveForm, child: const Text('Envoyer')),

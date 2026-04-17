@@ -42,6 +42,19 @@ class _CloturePageState extends State<CloturePage> with FormAutoSyncMixin {
   bool _signatureControleur = false;
   bool _dossierComplet = false;
 
+  bool _isRestoring = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _dateReceptionProvisoireController.addListener(_triggerAutoSave);
+    _dateReceptionDefinitiveController.addListener(_triggerAutoSave);
+    _dateLeveeReservesController.addListener(_triggerAutoSave);
+    _pvReceptionController.addListener(_triggerAutoSave);
+    _reservesController.addListener(_triggerAutoSave);
+    _remarquesFinalesController.addListener(_triggerAutoSave);
+  }
+
   @override
   void dispose() {
     _dateReceptionProvisoireController.dispose();
@@ -70,6 +83,8 @@ class _CloturePageState extends State<CloturePage> with FormAutoSyncMixin {
     );
     if (data == null || !mounted) return;
 
+    _isRestoring = true;
+
     setState(() {
       _dateReceptionProvisoireController.text = data['dateReceptionProvisoire'] ?? '';
       _dateReceptionDefinitiveController.text = data['dateReceptionDefinitive'] ?? '';
@@ -86,9 +101,34 @@ class _CloturePageState extends State<CloturePage> with FormAutoSyncMixin {
 
       _isSaved = true;
     });
+
+    _isRestoring = false;
   }
 
   // ── Sauvegarde ────────────────────────────────────────────────────────────
+
+  void _triggerAutoSave() {
+    if (_isRestoring) return;
+
+    onFieldChanged(
+      type: 'cloture_chantier',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => {
+        'dateReceptionProvisoire': _dateReceptionProvisoireController.text,
+        'dateReceptionDefinitive': _dateReceptionDefinitiveController.text,
+        'dateLeveeReserves': _dateLeveeReservesController.text,
+        'pvReception': _pvReceptionController.text,
+        'reserves': _reservesController.text,
+        'remarquesFinales': _remarquesFinalesController.text,
+        'leveeReserves': _leveeReserves,
+        'signatureEntreprise': _signatureEntreprise,
+        'signatureMaitreOuvrage': _signatureMaitreOuvrage,
+        'signatureControleur': _signatureControleur,
+        'dossierComplet': _dossierComplet,
+      },
+    );
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) {
@@ -211,7 +251,10 @@ class _CloturePageState extends State<CloturePage> with FormAutoSyncMixin {
                 SwitchListTile(
                   title: const Text('Levée des réserves effectuée', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                   value: _leveeReserves,
-                  onChanged: (v) => setState(() => _leveeReserves = v),
+                  onChanged: (v) {
+                    setState(() => _leveeReserves = v);
+                    _triggerAutoSave();
+                  },
                   activeColor: AppTheme.successColor,
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -230,15 +273,18 @@ class _CloturePageState extends State<CloturePage> with FormAutoSyncMixin {
                 const AppSectionTitle(title: 'Signatures et validation', icon: Icons.draw_rounded),
                 const Text('Parties ayant signé le PV :', style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                _buildCheckbox('Entreprise titulaire', _signatureEntreprise, (v) => setState(() => _signatureEntreprise = v!)),
-                _buildCheckbox('Maître d\'ouvrage', _signatureMaitreOuvrage, (v) => setState(() => _signatureMaitreOuvrage = v!)),
-                _buildCheckbox('Bureau de contrôle (MDC)', _signatureControleur, (v) => setState(() => _signatureControleur = v!)),
+                _buildCheckbox('Entreprise titulaire', _signatureEntreprise, (v) { setState(() => _signatureEntreprise = v!); _triggerAutoSave(); }),
+                _buildCheckbox('Maître d\'ouvrage', _signatureMaitreOuvrage, (v) { setState(() => _signatureMaitreOuvrage = v!); _triggerAutoSave(); }),
+                _buildCheckbox('Bureau de contrôle (MDC)', _signatureControleur, (v) { setState(() => _signatureControleur = v!); _triggerAutoSave(); }),
                 const Divider(height: 32),
                 SwitchListTile(
                   title: const Text('Dossier de clôture complet', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                   subtitle: const Text('Incluant les plans de recollement et PV', style: TextStyle(fontSize: 12)),
                   value: _dossierComplet,
-                  onChanged: (v) => setState(() => _dossierComplet = v),
+                  onChanged: (v) {
+                    setState(() => _dossierComplet = v);
+                    _triggerAutoSave();
+                  },
                   activeColor: AppTheme.primaryColor,
                   contentPadding: EdgeInsets.zero,
                 ),

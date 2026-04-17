@@ -39,8 +39,12 @@ import 'screens/rapports/rapport_synthese_screen.dart';
 import 'services/api_client.dart';
 import 'services/sync_service.dart';
 
+import 'package:hive_flutter/hive_flutter.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+  await Hive.openBox('form_drafts');
   await bootstrap();
 
   // ── Initialisation API ────────────────────────────────────────────────────

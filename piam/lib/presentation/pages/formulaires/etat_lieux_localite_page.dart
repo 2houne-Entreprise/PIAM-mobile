@@ -68,6 +68,32 @@ class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> with Form
   // Observations
   final _observationsController = TextEditingController();
 
+  bool _isRestoring = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _dateController.addListener(_autoSave);
+    _nbPopulationController.addListener(_autoSave);
+    _nbHommesController.addListener(_autoSave);
+    _nbFemmesController.addListener(_autoSave);
+    _nbEnfantsController.addListener(_autoSave);
+    _nbMenagesController.addListener(_autoSave);
+    _sourceEauController.addListener(_autoSave);
+    _nbMenagesSansEauController.addListener(_autoSave);
+    _nbLatrinesController.addListener(_autoSave);
+    _nbLatrinesAAmeliorerController.addListener(_autoSave);
+    _nbLatrinesAmelioreesController.addListener(_autoSave);
+    _nbLatrinesEndommageesController.addListener(_autoSave);
+    _nbMenagesLatrinesVoisinsController.addListener(_autoSave);
+    _nbMenagesDefecationAirLibreController.addListener(_autoSave);
+    _nbLatrinesAvecDLMController.addListener(_autoSave);
+    _nbDLMEauSavonController.addListener(_autoSave);
+    _nbDLMEauSansSavonController.addListener(_autoSave);
+    _nbMenagesSansDLMController.addListener(_autoSave);
+    _observationsController.addListener(_autoSave);
+  }
+
   // ── Cycle de vie ──────────────────────────────────────────────────────────
 
   @override
@@ -113,6 +139,8 @@ class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> with Form
 
     if (data == null || !mounted) return;
 
+    _isRestoring = true;
+
     _dateController.text = data['dateActivite'] ?? '';
     _nbPopulationController.text = data['nbPopulation']?.toString() ?? '';
     _nbHommesController.text = data['nbHommes']?.toString() ?? '';
@@ -136,13 +164,48 @@ class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> with Form
     // Restaurer la valeur du dropdown
     final accesEauVal = data['accesEau'];
     if (accesEauVal != null) {
-      setState(() => _accesEau = accesEauVal as bool?);
+      _accesEau = accesEauVal as bool?;
     }
 
+    _isRestoring = false;
     if (mounted) setState(() => _isSaved = true);
   }
 
   // ── Enregistrement ────────────────────────────────────────────────────────
+
+  void _autoSave() {
+    if (_isRestoring) return;
+    
+    final dataMap = {
+      'dateActivite': _dateController.text,
+      'nbPopulation': int.tryParse(_nbPopulationController.text),
+      'nbHommes': int.tryParse(_nbHommesController.text),
+      'nbFemmes': int.tryParse(_nbFemmesController.text),
+      'nbEnfants': int.tryParse(_nbEnfantsController.text),
+      'nbMenages': int.tryParse(_nbMenagesController.text),
+      'accesEau': _accesEau,
+      'sourceEau': _sourceEauController.text,
+      'nbMenagesSansEau': int.tryParse(_nbMenagesSansEauController.text),
+      'nbLatrines': int.tryParse(_nbLatrinesController.text),
+      'nbLatrinesAAmeliorer': int.tryParse(_nbLatrinesAAmeliorerController.text),
+      'nbLatrinesAmeliorees': int.tryParse(_nbLatrinesAmelioreesController.text),
+      'nbLatrinesEndommagees': int.tryParse(_nbLatrinesEndommageesController.text),
+      'nbMenagesLatrinesVoisins': int.tryParse(_nbMenagesLatrinesVoisinsController.text),
+      'nbMenagesDefecationAirLibre': int.tryParse(_nbMenagesDefecationAirLibreController.text),
+      'nbLatrinesAvecDLM': int.tryParse(_nbLatrinesAvecDLMController.text),
+      'nbDLM_EauSavon': int.tryParse(_nbDLMEauSavonController.text),
+      'nbDLM_EauSansSavon': int.tryParse(_nbDLMEauSansSavonController.text),
+      'nbMenagesSansDLM': int.tryParse(_nbMenagesSansDLMController.text),
+      'observations': _observationsController.text,
+    };
+
+    onFieldChanged(
+      type: 'etat_lieux_localite',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => dataMap,
+    );
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) {
@@ -314,7 +377,10 @@ class _EtatLieuxLocalitePageState extends State<EtatLieuxLocalitePage> with Form
                     DropdownMenuItem(value: true, child: Text('Oui')),
                     DropdownMenuItem(value: false, child: Text('Non')),
                   ],
-                  onChanged: (v) => setState(() => _accesEau = v),
+                  onChanged: (v) {
+                    setState(() => _accesEau = v);
+                    _autoSave();
+                  },
                 ),
                 if (_accesEau == true)
                   AppTextField(

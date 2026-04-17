@@ -48,10 +48,17 @@ class _OrganisationPageState extends State<OrganisationPage> with FormAutoSyncMi
   // Matériaux
   final List<_MateriauItem> _materiaux = [];
 
+  bool _isRestoring = false;
+
   @override
   void initState() {
     super.initState();
     // Le premier matériau sera ajouté par le chargement ou par défaut
+    _chefChantierController.addListener(_triggerAutoSave);
+    _nomEntrepriseController.addListener(_triggerAutoSave);
+    _effectifOuvrierController.addListener(_triggerAutoSave);
+    _effectifEncadrementController.addListener(_triggerAutoSave);
+    _observationsController.addListener(_triggerAutoSave);
   }
 
   @override
@@ -81,9 +88,11 @@ class _OrganisationPageState extends State<OrganisationPage> with FormAutoSyncMi
       localiteId: localiteId,
     );
     if (data == null || !mounted) {
-      if (_materiaux.isEmpty) setState(() => _materiaux.add(_MateriauItem()));
+      if (_materiaux.isEmpty) setState(() => _materiaux.add(_MateriauItem(onChanged: _triggerAutoSave)));
       return;
     }
+
+    _isRestoring = true;
 
     setState(() {
       _chefChantierController.text = data['chefChantier'] ?? '';
@@ -102,20 +111,52 @@ class _OrganisationPageState extends State<OrganisationPage> with FormAutoSyncMi
       _materiaux.clear();
       if (data['materiaux'] != null) {
         for (var item in (data['materiaux'] as List)) {
-          final m = _MateriauItem();
+          final m = _MateriauItem(onChanged: _triggerAutoSave);
           m.nomController.text = item['nom'] ?? '';
           m.quantiteController.text = item['quantite'] ?? '';
           m.qualiteController.text = item['qualite'] ?? '';
           _materiaux.add(m);
         }
       }
-      if (_materiaux.isEmpty) _materiaux.add(_MateriauItem());
+      if (_materiaux.isEmpty) _materiaux.add(_MateriauItem(onChanged: _triggerAutoSave));
 
       _isSaved = true;
     });
+
+    _isRestoring = false;
   }
 
   // ── Sauvegarde ────────────────────────────────────────────────────────────
+
+  void _triggerAutoSave() {
+    if (_isRestoring) return;
+
+    final materiauxJson = _materiaux.map((m) => {
+      'nom': m.nomController.text,
+      'quantite': m.quantiteController.text,
+      'qualite': m.qualiteController.text,
+    }).toList();
+
+    onFieldChanged(
+      type: 'organisation_chantier',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => {
+        'chefChantier': _chefChantierController.text,
+        'nomEntreprise': _nomEntrepriseController.text,
+        'effectifOuvrier': int.tryParse(_effectifOuvrierController.text),
+        'effectifEncadrement': int.tryParse(_effectifEncadrementController.text),
+        'origineMainOeuvre': _origineMainOeuvre,
+        'casques': _casques,
+        'gants': _gants,
+        'chaussures': _chaussures,
+        'gilets': _gilets,
+        'masques': _masques,
+        'materiaux': materiauxJson,
+        'observations': _observationsController.text,
+      },
+    );
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
@@ -239,7 +280,10 @@ class _OrganisationPageState extends State<OrganisationPage> with FormAutoSyncMi
                   label: 'Origine de la main d\'œuvre',
                   value: _origineMainOeuvre,
                   items: _origines.map((o) => DropdownMenuItem(value: o, child: Text(o))).toList(),
-                  onChanged: (v) => setState(() => _origineMainOeuvre = v!),
+                  onChanged: (v) {
+                    setState(() => _origineMainOeuvre = v!);
+                    _triggerAutoSave();
+                  },
                 ),
               ],
             ),
@@ -253,11 +297,11 @@ class _OrganisationPageState extends State<OrganisationPage> with FormAutoSyncMi
                 Wrap(
                   spacing: 4,
                   children: [
-                    _epiToggle('Casques', _casques, (v) => setState(() => _casques = v)),
-                    _epiToggle('Gants', _gants, (v) => setState(() => _gants = v)),
-                    _epiToggle('Chaussures de sécu.', _chaussures, (v) => setState(() => _chaussures = v)),
-                    _epiToggle('Gilets réfléchissants', _gilets, (v) => setState(() => _gilets = v)),
-                    _epiToggle('Masques', _masques, (v) => setState(() => _masques = v)),
+                    _epiToggle('Casques', _casques, (v) { setState(() => _casques = v); _triggerAutoSave(); }),
+                    _epiToggle('Gants', _gants, (v) { setState(() => _gants = v); _triggerAutoSave(); }),
+                    _epiToggle('Chaussures de sécu.', _chaussures, (v) { setState(() => _chaussures = v); _triggerAutoSave(); }),
+                    _epiToggle('Gilets réfléchissants', _gilets, (v) { setState(() => _gilets = v); _triggerAutoSave(); }),
+                    _epiToggle('Masques', _masques, (v) { setState(() => _masques = v); _triggerAutoSave(); }),
                   ],
                 ),
               ],
@@ -272,7 +316,10 @@ class _OrganisationPageState extends State<OrganisationPage> with FormAutoSyncMi
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.add_shopping_cart_outlined),
                 label: const Text('Ajouter un matériau'),
-                onPressed: () => setState(() => _materiaux.add(_MateriauItem())),
+                onPressed: () {
+                  setState(() => _materiaux.add(_MateriauItem(onChanged: _triggerAutoSave)));
+                  _triggerAutoSave();
+                },
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -345,10 +392,13 @@ class _OrganisationPageState extends State<OrganisationPage> with FormAutoSyncMi
             if (_materiaux.length > 1)
               IconButton(
                 icon: const Icon(Icons.delete_outline, color: AppTheme.errorColor),
-                onPressed: () => setState(() {
-                  _materiaux[index].dispose();
-                  _materiaux.removeAt(index);
-                }),
+                onPressed: () {
+                  setState(() {
+                    _materiaux[index].dispose();
+                    _materiaux.removeAt(index);
+                  });
+                  _triggerAutoSave();
+                },
               ),
           ],
         ),
@@ -372,6 +422,14 @@ class _MateriauItem {
   final nomController = TextEditingController();
   final quantiteController = TextEditingController();
   final qualiteController = TextEditingController();
+
+  _MateriauItem({VoidCallback? onChanged}) {
+    if (onChanged != null) {
+      nomController.addListener(onChanged);
+      quantiteController.addListener(onChanged);
+      qualiteController.addListener(onChanged);
+    }
+  }
 
   void dispose() {
     nomController.dispose();

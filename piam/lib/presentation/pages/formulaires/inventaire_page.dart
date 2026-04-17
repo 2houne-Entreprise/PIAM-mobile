@@ -52,12 +52,24 @@ class _InventairePageState extends State<InventairePage> with FormAutoSyncMixin 
   bool _dlmFonctionnel = false;
   String? _photoPath;
 
+  bool _isRestoring = false;
+
   @override
   void initState() {
     super.initState();
     onSyncStatusChanged = (status) {
       if (mounted) setState(() => _syncStatus = status);
     };
+
+    _nomInfraController.addListener(_triggerAutoSave);
+    _typeInfraController.addListener(_triggerAutoSave);
+    _sourceEauController.addListener(_triggerAutoSave);
+    _distanceSourceController.addListener(_triggerAutoSave);
+    _nbBlocsController.addListener(_triggerAutoSave);
+    _nbCabinesController.addListener(_triggerAutoSave);
+    _nbCabinesFonctController.addListener(_triggerAutoSave);
+    _nbBlocsConstruireController.addListener(_triggerAutoSave);
+    _nbCabinesConstruireController.addListener(_triggerAutoSave);
   }
 
   @override
@@ -91,6 +103,8 @@ class _InventairePageState extends State<InventairePage> with FormAutoSyncMixin 
     );
     if (data == null || !mounted) return;
 
+    _isRestoring = true;
+
     setState(() {
       _nomInfraController.text = data['nomInfrastructure'] ?? '';
       _typeInfraController.text = data['typeInfrastructure'] ?? '';
@@ -112,6 +126,8 @@ class _InventairePageState extends State<InventairePage> with FormAutoSyncMixin 
       _syncStatus = data['_status'] as String?;
       _isSaved = _syncStatus == 'completed' || _syncStatus == 'synced';
     });
+
+    _isRestoring = false;
   }
 
   Future<void> _takePhoto() async {
@@ -123,6 +139,8 @@ class _InventairePageState extends State<InventairePage> with FormAutoSyncMixin 
 
   /// Déclenche la sauvegarde automatique du brouillon (debounced).
   void _triggerAutoSave() {
+    if (_isRestoring) return;
+
     onFieldChanged(
       type: 'inventaire_infra',
       localiteId: _localiteId,

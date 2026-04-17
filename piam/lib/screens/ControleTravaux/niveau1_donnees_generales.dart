@@ -333,6 +333,50 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
   Future<void> _loadParametrageInitial() async {
     final param = await _dbService.getParametreUtilisateur();
     if (mounted) setState(() => _paramInit = param);
+    // Après avoir chargé le paramétrage, charger le brouillon
+    await _loadDraft();
+  }
+
+  /// Charge les données sauvegardées (brouillon ou complet) et pré-remplit les champs
+  Future<void> _loadDraft() async {
+    final localiteId = _paramInit?['localite_id'] as int?;
+    if (localiteId == null) return;
+
+    final draft = await _dbService.getQuestionnaire(
+      type: 'identification',
+      localiteId: localiteId,
+    );
+    if (draft == null || !mounted) return;
+
+    setState(() {
+      _projectNameController.text = draft['projectName'] ?? '';
+      _companyNameController.text = draft['companyName'] ?? '';
+      _codeMesreController.text = draft['codeMesre'] ?? '';
+      _codeMsController.text = draft['codeMs'] ?? '';
+      _effectifController.text = draft['effectif']?.toString() ?? '';
+      _nbPotentielsController.text = draft['nbPotentiels']?.toString() ?? '';
+      _intituleProjetController.text = draft['intituleProjet'] ?? '';
+      _marcheTravauxController.text = draft['marcheTravaux'] ?? '';
+      _numeroMarcheController.text = draft['numeroMarche'] ?? '';
+      _nomEntrepriseMarcheController.text = draft['nomEntreprise'] ?? '';
+      _delaiMarcheController.text = draft['delaiMarche'] ?? '';
+      _dateDemarrageMarcheController.text = draft['dateDemarrageMarche'] ?? '';
+      _marcheControleTravauxController.text = draft['marcheControleTravaux'] ?? '';
+      _numeroMarcheControleController.text = draft['numeroMarcheControle'] ?? '';
+      _bureauControleController.text = draft['bureauControle'] ?? '';
+      _nomControleurController.text = draft['nomControleur'] ?? '';
+      _latrinesArealiserController.text = draft['latrinesArealiser'] ?? '';
+      _nbBlocsController.text = draft['nbBlocs']?.toString() ?? '';
+      _nbCabinesController.text = draft['nbCabines']?.toString() ?? '';
+      _nbDLMController.text = draft['nbDLM']?.toString() ?? '';
+      _autresTravauxController.text = draft['autresTravaux'] ?? '';
+      _autrePreciserController.text = draft['autrePreciser'] ?? '';
+      if (draft['etablissement'] != null) _etablissement = draft['etablissement'];
+      if (draft['typeLatrinesArealiser'] != null) _typeLatrinesArealiser = draft['typeLatrinesArealiser'];
+      if (draft['toit'] != null) _toit = draft['toit'];
+      _destructionAncienne = draft['destructionAnciennes'] == 'Oui';
+      _constructionMur = draft['constructionMur'] == 'Oui';
+    });
   }
 
   @override

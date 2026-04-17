@@ -26,7 +26,7 @@ class ParametrageInitialWidgetState
   int? selectedMoughataaId;
   int? selectedCommuneId;
 
-  // Cascades calcul\u00e9es en m\u00e9moire depuis ReferenceData \u2014 aucune DB requise
+  // Cascades calculées en mémoire depuis ReferenceData — aucune DB requise
   List<Map<String, dynamic>> get moughataas => selectedWilayaId == null
       ? []
       : ReferenceData.getMoughatasByWilaya(selectedWilayaId!);
@@ -90,6 +90,7 @@ class ParametrageInitialWidgetState
         children: [
           // ── Wilaya ──────────────────────────────────────────────────────────
           DropdownButtonFormField<int>(
+            isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Wilaya',
               border: OutlineInputBorder(),
@@ -116,6 +117,7 @@ class ParametrageInitialWidgetState
 
           // ── Moughataa ────────────────────────────────────────────────────────
           DropdownButtonFormField<int>(
+            isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Moughataa',
               border: OutlineInputBorder(),
@@ -143,6 +145,7 @@ class ParametrageInitialWidgetState
 
           // ── Commune ──────────────────────────────────────────────────────────
           DropdownButtonFormField<int>(
+            isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Commune',
               border: OutlineInputBorder(),

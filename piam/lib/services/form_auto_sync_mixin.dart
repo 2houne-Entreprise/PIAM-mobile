@@ -3,6 +3,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:piam/services/database_service.dart';
 import 'package:piam/services/questionnaire_api_service.dart';
 import 'package:piam/services/api_client.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'dart:async';
 
 /// Mixin pour ajouter la synchronisation automatique aux formulaires.
@@ -28,22 +29,27 @@ mixin FormAutoSyncMixin {
   /// Callback optionnel pour notifier l'UI après une sauvegarde.
   void Function(String status)? onSyncStatusChanged;
 
-  /// Enregistre un brouillon en arrière-plan sans déclencher la synchronisation.
+  /// Enregistre un brouillon localement dans Hive en arrière-plan sans déclencher la synchronisation.
   Future<void> saveDraft({
     required String type,
     required int? localiteId,
     required Map<String, dynamic> dataMap,
     dynamic userId,
+    String? niveau,
   }) async {
-    await _dbService.upsertQuestionnaire(
-      type: type,
-      localiteId: localiteId,
-      dataMap: dataMap,
-      userId: userId,
-      status: 'draft',
-    );
-    debugPrint('[FormAutoSync] Brouillon "$type" sauvegardé');
-    onSyncStatusChanged?.call('draft');
+    try {
+      final box = Hive.box('form_drafts');
+      final key = type; // Utilisation simplifiée demandée par l'utilisateur
+      
+      // Conversion sécurisée en Map standard pour Hive
+      final safeMap = Map<String, dynamic>.from(dataMap);
+      await box.put(key, safeMap);
+      
+      debugPrint('[FormAutoSync] Brouillon Hive "$key" sauvegardé');
+      onSyncStatusChanged?.call('draft');
+    } catch (e) {
+      debugPrint('[FormAutoSync] Erreur sauvegarde Hive: $e');
+    }
   }
 
   /// Helper pour sauvegarder automatiquement avec un délai (debounce).
@@ -53,12 +59,8 @@ mixin FormAutoSyncMixin {
     required int? localiteId,
     required Map<String, dynamic> Function() dataProvider,
     dynamic userId,
+    String? niveau,
   }) {
-    if (localiteId == null) {
-      debugPrint('[FormAutoSync] Abandon auto-save : localiteId est nul');
-      return;
-    }
-    
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 1000), () async {
       await saveDraft(
@@ -66,6 +68,7 @@ mixin FormAutoSyncMixin {
         localiteId: localiteId,
         dataMap: dataProvider(),
         userId: userId,
+        niveau: niveau,
       );
     });
   }
@@ -88,6 +91,15 @@ mixin FormAutoSyncMixin {
       userId: userId,
       status: 'completed',
     );
+
+    // 1.5 Nettoyage du brouillon Hive
+    try {
+      if (Hive.isBoxOpen('form_drafts')) {
+        final box = Hive.box('form_drafts');
+        final key = type;
+        await box.delete(key);
+      }
+    } catch (_) {}
 
     // 2. Tentative de sync API en arrière-plan
     _trySyncInBackground(type, localiteId);

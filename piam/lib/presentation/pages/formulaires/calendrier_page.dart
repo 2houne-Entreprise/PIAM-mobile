@@ -45,10 +45,16 @@ class _CalendrierPageState extends State<CalendrierPage> with FormAutoSyncMixin 
     'Annulé',
   ];
 
+  bool _isRestoring = false;
+
   @override
   void initState() {
     super.initState();
-    // Par défaut, pas de jalon vide au début car ils seront chargés depuis la base
+    _dateDebutPrevueController.addListener(_triggerAutoSave);
+    _dateFinPrevueController.addListener(_triggerAutoSave);
+    _dateDebutReelleController.addListener(_triggerAutoSave);
+    _dateFinReelleController.addListener(_triggerAutoSave);
+    _observationsController.addListener(_triggerAutoSave);
   }
 
   @override
@@ -78,9 +84,11 @@ class _CalendrierPageState extends State<CalendrierPage> with FormAutoSyncMixin 
       localiteId: localiteId,
     );
     if (data == null || !mounted) {
-      if (_jalons.isEmpty) setState(() => _jalons.add(_Jalon())); // Un jalon vide si rien
+      if (_jalons.isEmpty) setState(() => _jalons.add(_Jalon(onChanged: _triggerAutoSave))); // Un jalon vide si rien
       return;
     }
+
+    _isRestoring = true;
 
     setState(() {
       _dateDebutPrevueController.text = data['dateDebutPrevue'] ?? '';
@@ -94,20 +102,47 @@ class _CalendrierPageState extends State<CalendrierPage> with FormAutoSyncMixin 
       _jalons.clear();
       if (data['jalons'] != null) {
         for (var item in (data['jalons'] as List)) {
-          final j = _Jalon();
+          final j = _Jalon(onChanged: _triggerAutoSave);
           j.nomController.text = item['nom'] ?? '';
           j.statut = item['statut'] ?? 'Planifié';
           j.dateController.text = item['date'] ?? '';
           _jalons.add(j);
         }
       }
-      if (_jalons.isEmpty) _jalons.add(_Jalon());
+      if (_jalons.isEmpty) _jalons.add(_Jalon(onChanged: _triggerAutoSave));
 
       _isSaved = true;
     });
+
+    _isRestoring = false;
   }
 
   // ── Actions ───────────────────────────────────────────────────────────────
+
+  void _triggerAutoSave() {
+    if (_isRestoring) return;
+
+    final jalonsJson = _jalons.map((j) => {
+      'nom': j.nomController.text,
+      'statut': j.statut,
+      'date': j.dateController.text,
+    }).toList();
+
+    onFieldChanged(
+      type: 'calendrier_travaux',
+      localiteId: _localiteId,
+      userId: _userId,
+      dataProvider: () => {
+        'dateDebutPrevue': _dateDebutPrevueController.text,
+        'dateFinPrevue': _dateFinPrevueController.text,
+        'dateDebutReelle': _dateDebutReelleController.text,
+        'dateFinReelle': _dateFinReelleController.text,
+        'avancement': _avancement,
+        'jalons': jalonsJson,
+        'observations': _observationsController.text,
+      },
+    );
+  }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) {
@@ -255,7 +290,10 @@ class _CalendrierPageState extends State<CalendrierPage> with FormAutoSyncMixin 
                         divisions: 20,
                         activeColor: AppTheme.primaryColor,
                         label: '${_avancement.toInt()}%',
-                        onChanged: (v) => setState(() => _avancement = v),
+                        onChanged: (v) { 
+                          setState(() => _avancement = v);
+                          _triggerAutoSave();
+                        },
                       ),
                     ),
                     Container(
@@ -283,7 +321,10 @@ class _CalendrierPageState extends State<CalendrierPage> with FormAutoSyncMixin 
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.add_circle_outline),
                 label: const Text('Ajouter un jalon'),
-                onPressed: () => setState(() => _jalons.add(_Jalon())),
+                onPressed: () {
+                  setState(() => _jalons.add(_Jalon(onChanged: _triggerAutoSave)));
+                  _triggerAutoSave();
+                },
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -338,7 +379,10 @@ class _CalendrierPageState extends State<CalendrierPage> with FormAutoSyncMixin 
                           label: 'Statut',
                           value: jalon.statut,
                           items: _statutsJalon.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-                          onChanged: (v) => setState(() => jalon.statut = v!),
+                          onChanged: (v) {
+                            setState(() => jalon.statut = v!);
+                            _triggerAutoSave();
+                          },
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -356,10 +400,13 @@ class _CalendrierPageState extends State<CalendrierPage> with FormAutoSyncMixin 
             if (_jalons.length > 1)
               IconButton(
                 icon: const Icon(Icons.delete_outline, color: AppTheme.errorColor),
-                onPressed: () => setState(() {
-                  _jalons[index].dispose();
-                  _jalons.removeAt(index);
-                }),
+                onPressed: () {
+                  setState(() {
+                    _jalons[index].dispose();
+                    _jalons.removeAt(index);
+                  });
+                  _triggerAutoSave();
+                },
               ),
           ],
         ),
@@ -372,6 +419,13 @@ class _Jalon {
   final nomController = TextEditingController();
   final dateController = TextEditingController();
   String statut = 'Planifié';
+
+  _Jalon({VoidCallback? onChanged}) {
+    if (onChanged != null) {
+      nomController.addListener(onChanged);
+      dateController.addListener(onChanged);
+    }
+  }
 
   void dispose() {
     nomController.dispose();

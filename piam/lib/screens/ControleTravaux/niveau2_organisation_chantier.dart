@@ -190,6 +190,78 @@ class _Niveau2OrganisationChantierState
   Future<void> _loadParametrageInitial() async {
     final param = await _dbService.getParametreUtilisateur();
     if (mounted) setState(() => _paramInit = param);
+    await _loadDraft();
+  }
+
+  /// Restaure les données sauvegardées pour les 3 sections
+  Future<void> _loadDraft() async {
+    final localiteId = _paramInit?['localite_id'];
+    if (localiteId == null) return;
+
+    // --- A) Personnel ---
+    final personnelData = await _dbService.getQuestionnaire(
+      type: 'organisation_chantier_personnel',
+      localiteId: localiteId,
+    );
+    if (personnelData != null && mounted) {
+      setState(() {
+        _nomPersonnelController.text = personnelData['nom'] ?? '';
+        _fonctionPersonnel = personnelData['fonction'] ?? _fonctionPersonnel;
+        _dateArriveeController.text = personnelData['dateArrivee'] ?? '';
+        _provenancePersonnel = personnelData['provenance'] ?? _provenancePersonnel;
+        _contratTravail = personnelData['contratTravail'] == 'Oui';
+        _premiersSecours = personnelData['premiersSecours'] == 'Oui';
+        _masqueNbController.text = personnelData['masqueNb']?.toString() ?? '';
+        _casque = personnelData['casque'] == 'Oui';
+        _gants = personnelData['gants'] == 'Oui';
+        _chaussures = personnelData['chaussures'] == 'Oui';
+        _gilet = personnelData['gilet'] == 'Oui';
+        _remarquePersonnelController.text = personnelData['remarque'] ?? '';
+      });
+    }
+
+    // --- B) Équipements ---
+    final equipData = await _dbService.getQuestionnaire(
+      type: 'organisation_chantier_equipements',
+      localiteId: localiteId,
+    );
+    if (equipData != null && mounted) {
+      final items = equipData['items'];
+      if (items is List) {
+        setState(() {
+          for (int i = 0; i < _equipementChecklist.length && i < items.length; i++) {
+            final saved = items[i];
+            if (saved is Map) {
+              _equipementChecklist[i]['etat'] = saved['etat'] ?? _equipementChecklist[i]['etat'];
+              _equipementChecklist[i]['date'] = saved['date'] ?? '';
+              _equipementChecklist[i]['remarque'] = saved['remarque'] ?? '';
+            }
+          }
+        });
+      }
+    }
+
+    // --- C) Matériaux ---
+    final matData = await _dbService.getQuestionnaire(
+      type: 'organisation_chantier_materiaux',
+      localiteId: localiteId,
+    );
+    if (matData != null && mounted) {
+      final items = matData['items'];
+      if (items is List) {
+        setState(() {
+          for (int i = 0; i < _materiauxChecklist.length && i < items.length; i++) {
+            final saved = items[i];
+            if (saved is Map) {
+              _materiauxChecklist[i]['quantite'] = saved['quantite']?.toString() ?? '';
+              _materiauxChecklist[i]['qualite'] = saved['qualite'] ?? _materiauxChecklist[i]['qualite'];
+              _materiauxChecklist[i]['recommandation'] = saved['recommandation'] ?? _materiauxChecklist[i]['recommandation'];
+              _materiauxChecklist[i]['date'] = saved['date'] ?? '';
+            }
+          }
+        });
+      }
+    }
   }
 
   Future<void> _savePersonnel() async {
