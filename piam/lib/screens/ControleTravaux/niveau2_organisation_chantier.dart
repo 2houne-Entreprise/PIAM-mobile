@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../services/database_service.dart';
+import '../../services/form_auto_sync_mixin.dart';
+import '../../presentation/widgets/app_form_fields.dart';
 
 class Niveau2OrganisationChantier extends StatefulWidget {
   static const String routeName = '/niveau2';
@@ -11,7 +14,7 @@ class Niveau2OrganisationChantier extends StatefulWidget {
 }
 
 class _Niveau2OrganisationChantierState
-    extends State<Niveau2OrganisationChantier> {
+    extends State<Niveau2OrganisationChantier> with FormAutoSyncMixin {
   final DatabaseService _dbService = DatabaseService();
 
   final _personnelForm = GlobalKey<FormState>();
@@ -185,6 +188,62 @@ class _Niveau2OrganisationChantierState
   void initState() {
     super.initState();
     _loadParametrageInitial();
+    
+    // Listeners for auto-save
+    _nomPersonnelController.addListener(_triggerAutoSave);
+    _dateArriveeController.addListener(_triggerAutoSave);
+    _masqueNbController.addListener(_triggerAutoSave);
+    _remarquePersonnelController.addListener(_triggerAutoSave);
+    _equipementNomController.addListener(_triggerAutoSave);
+    _equipementRemarqueController.addListener(_triggerAutoSave);
+    _materiauxNomController.addListener(_triggerAutoSave);
+    _materiauxQuantiteController.addListener(_triggerAutoSave);
+  }
+
+  bool _isRestoring = false;
+
+  void _triggerAutoSave() {
+    if (_isRestoring) return;
+    
+    onFieldChanged(
+      type: 'programmation_travaux',
+      niveau: 'niveau2',
+      localiteId: _paramInit?['localite_id'],
+      dataProvider: () => _getFormData(),
+    );
+  }
+
+  Map<String, dynamic> _getFormData() {
+    return {
+      'personnel': {
+        'nom': _nomPersonnelController.text.trim(),
+        'fonction': _fonctionPersonnel,
+        'dateArrivee': _dateArriveeController.text.trim(),
+        'provenance': _provenancePersonnel,
+        'contratTravail': _contratTravail ? 'Oui' : 'Non',
+        'premiersSecours': _premiersSecours ? 'Oui' : 'Non',
+        'masqueNb': int.tryParse(_masqueNbController.text) ?? 0,
+        'casque': _casque ? 'Oui' : 'Non',
+        'gants': _gants ? 'Oui' : 'Non',
+        'chaussures': _chaussures ? 'Oui' : 'Non',
+        'gilet': _gilet ? 'Oui' : 'Non',
+        'remarque': _remarquePersonnelController.text.trim(),
+      },
+      'equipements': _equipementChecklist.map((item) => {
+        'nom': item['nom'],
+        'etat': item['etat'],
+        'remarque': item['remarque'],
+        'date': item['date'],
+      }).toList(),
+      'materiaux': _materiauxChecklist.map((item) => {
+        'nom': item['nom'],
+        'quantite': item['quantite'],
+        'qualite': item['qualite'],
+        'recommandation': item['recommandation'],
+        'date': item['date'],
+      }).toList(),
+      'updatedAt': DateTime.now().toIso8601String(),
+    };
   }
 
   Future<void> _loadParametrageInitial() async {
@@ -195,73 +254,61 @@ class _Niveau2OrganisationChantierState
 
   /// Restaure les données sauvegardées pour les 3 sections
   Future<void> _loadDraft() async {
-    final localiteId = _paramInit?['localite_id'];
-    if (localiteId == null) return;
-
-    // --- A) Personnel ---
-    final personnelData = await _dbService.getQuestionnaire(
-      type: 'organisation_chantier_personnel',
-      localiteId: localiteId,
+    final draft = await _dbService.getQuestionnaire(
+      type: 'programmation_travaux',
+      niveau: 'niveau2',
+      localiteId: _paramInit?['localite_id'],
     );
-    if (personnelData != null && mounted) {
-      setState(() {
-        _nomPersonnelController.text = personnelData['nom'] ?? '';
-        _fonctionPersonnel = personnelData['fonction'] ?? _fonctionPersonnel;
-        _dateArriveeController.text = personnelData['dateArrivee'] ?? '';
-        _provenancePersonnel = personnelData['provenance'] ?? _provenancePersonnel;
-        _contratTravail = personnelData['contratTravail'] == 'Oui';
-        _premiersSecours = personnelData['premiersSecours'] == 'Oui';
-        _masqueNbController.text = personnelData['masqueNb']?.toString() ?? '';
-        _casque = personnelData['casque'] == 'Oui';
-        _gants = personnelData['gants'] == 'Oui';
-        _chaussures = personnelData['chaussures'] == 'Oui';
-        _gilet = personnelData['gilet'] == 'Oui';
-        _remarquePersonnelController.text = personnelData['remarque'] ?? '';
-      });
-    }
+    
+    if (draft == null || !mounted) return;
 
-    // --- B) Équipements ---
-    final equipData = await _dbService.getQuestionnaire(
-      type: 'organisation_chantier_equipements',
-      localiteId: localiteId,
-    );
-    if (equipData != null && mounted) {
-      final items = equipData['items'];
-      if (items is List) {
-        setState(() {
-          for (int i = 0; i < _equipementChecklist.length && i < items.length; i++) {
-            final saved = items[i];
-            if (saved is Map) {
-              _equipementChecklist[i]['etat'] = saved['etat'] ?? _equipementChecklist[i]['etat'];
-              _equipementChecklist[i]['date'] = saved['date'] ?? '';
-              _equipementChecklist[i]['remarque'] = saved['remarque'] ?? '';
-            }
-          }
-        });
+    _isRestoring = true;
+    setState(() {
+      // --- A) Personnel ---
+      final personnel = draft['personnel'];
+      if (personnel is Map) {
+        _nomPersonnelController.text = personnel['nom'] ?? '';
+        _fonctionPersonnel = personnel['fonction'] ?? _fonctionPersonnel;
+        _dateArriveeController.text = personnel['dateArrivee'] ?? '';
+        _provenancePersonnel = personnel['provenance'] ?? _provenancePersonnel;
+        _contratTravail = personnel['contratTravail'] == 'Oui';
+        _premiersSecours = personnel['premiersSecours'] == 'Oui';
+        _masqueNbController.text = personnel['masqueNb']?.toString() ?? '';
+        _casque = personnel['casque'] == 'Oui';
+        _gants = personnel['gants'] == 'Oui';
+        _chaussures = personnel['chaussures'] == 'Oui';
+        _gilet = personnel['gilet'] == 'Oui';
+        _remarquePersonnelController.text = personnel['remarque'] ?? '';
       }
-    }
 
-    // --- C) Matériaux ---
-    final matData = await _dbService.getQuestionnaire(
-      type: 'organisation_chantier_materiaux',
-      localiteId: localiteId,
-    );
-    if (matData != null && mounted) {
-      final items = matData['items'];
-      if (items is List) {
-        setState(() {
-          for (int i = 0; i < _materiauxChecklist.length && i < items.length; i++) {
-            final saved = items[i];
-            if (saved is Map) {
-              _materiauxChecklist[i]['quantite'] = saved['quantite']?.toString() ?? '';
-              _materiauxChecklist[i]['qualite'] = saved['qualite'] ?? _materiauxChecklist[i]['qualite'];
-              _materiauxChecklist[i]['recommandation'] = saved['recommandation'] ?? _materiauxChecklist[i]['recommandation'];
-              _materiauxChecklist[i]['date'] = saved['date'] ?? '';
-            }
+      // --- B) Équipements ---
+      final itemsEquip = draft['equipements'];
+      if (itemsEquip is List) {
+        for (int i = 0; i < _equipementChecklist.length && i < itemsEquip.length; i++) {
+          final saved = itemsEquip[i];
+          if (saved is Map) {
+            _equipementChecklist[i]['etat'] = saved['etat'] ?? _equipementChecklist[i]['etat'];
+            _equipementChecklist[i]['date'] = saved['date'] ?? '';
+            _equipementChecklist[i]['remarque'] = saved['remarque'] ?? '';
           }
-        });
+        }
       }
-    }
+
+      // --- C) Matériaux ---
+      final itemsMat = draft['materiaux'];
+      if (itemsMat is List) {
+        for (int i = 0; i < _materiauxChecklist.length && i < itemsMat.length; i++) {
+          final saved = itemsMat[i];
+          if (saved is Map) {
+            _materiauxChecklist[i]['quantite'] = saved['quantite']?.toString() ?? '';
+            _materiauxChecklist[i]['qualite'] = saved['qualite'] ?? _materiauxChecklist[i]['qualite'];
+            _materiauxChecklist[i]['recommandation'] = saved['recommandation'] ?? _materiauxChecklist[i]['recommandation'];
+            _materiauxChecklist[i]['date'] = saved['date'] ?? '';
+          }
+        }
+      }
+    });
+    _isRestoring = false;
   }
 
   Future<void> _savePersonnel() async {
@@ -272,30 +319,17 @@ class _Niveau2OrganisationChantierState
       return;
     }
 
-    final data = {
-      'nom': _nomPersonnelController.text.trim(),
-      'fonction': _fonctionPersonnel,
-      'dateArrivee': _dateArriveeController.text.trim(),
-      'provenance': _provenancePersonnel,
-      'contratTravail': _contratTravail ? 'Oui' : 'Non',
-      'premiersSecours': _premiersSecours ? 'Oui' : 'Non',
-      'masqueNb': int.tryParse(_masqueNbController.text) ?? 0,
-      'casque': _casque ? 'Oui' : 'Non',
-      'gants': _gants ? 'Oui' : 'Non',
-      'chaussures': _chaussures ? 'Oui' : 'Non',
-      'gilet': _gilet ? 'Oui' : 'Non',
-      'remarque': _remarquePersonnelController.text.trim(),
-      'createdAt': DateTime.now().toIso8601String(),
-    };
+    final data = _getFormData();
 
-    await _dbService.upsertQuestionnaire(
-      type: 'organisation_chantier_personnel',
+    await saveAndSync(
+      type: 'programmation_travaux',
+      niveau: 'niveau2',
       localiteId: activeLocaliteId,
       dataMap: data,
     );
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Personnel ajouté')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Section Personnel sauvegardée')));
   }
 
   Future<void> _saveEquipementsChecklist() async {
@@ -305,17 +339,13 @@ class _Niveau2OrganisationChantierState
       return;
     }
 
-    final data = _equipementChecklist.map((item) => {
-      'nom': item['nom'],
-      'etat': item['etat'],
-      'remarque': item['remarque'],
-      'date': item['date'],
-    }).toList();
+    final data = _getFormData();
 
-    await _dbService.upsertQuestionnaire(
-      type: 'organisation_chantier_equipements',
+    await saveAndSync(
+      type: 'programmation_travaux',
+      niveau: 'niveau2',
       localiteId: activeLocaliteId,
-      dataMap: {'items': data},
+      dataMap: data,
     );
 
     if (!mounted) return;
@@ -329,18 +359,13 @@ class _Niveau2OrganisationChantierState
       return;
     }
 
-    final data = _materiauxChecklist.map((item) => {
-      'nom': item['nom'],
-      'quantite': int.tryParse(item['quantite']?.toString() ?? '') ?? 0,
-      'qualite': item['qualite'],
-      'recommandation': item['recommandation'],
-      'date': item['date'],
-    }).toList();
+    final data = _getFormData();
 
-    await _dbService.upsertQuestionnaire(
-      type: 'organisation_chantier_materiaux',
+    await saveAndSync(
+      type: 'programmation_travaux',
+      niveau: 'niveau2',
       localiteId: activeLocaliteId,
-      dataMap: {'items': data},
+      dataMap: data,
     );
 
     if (!mounted) return;
@@ -425,10 +450,9 @@ class _Niveau2OrganisationChantierState
                       onChanged: (v) => setState(() => _premiersSecours = v),
                     ),
                     const SizedBox(height: 8),
-                    _buildTextField(
+                    AppNumberField(
                       controller: _masqueNbController,
                       label: 'Nb de masques remis',
-                      keyboardType: TextInputType.number,
                     ),
                     SwitchListTile(
                       title: const Text('Casque remis'),
@@ -492,7 +516,10 @@ class _Niveau2OrganisationChantierState
                               labelText: 'Date',
                               border: OutlineInputBorder(),
                             ),
-                            onChanged: (v) => setState(() => item['date'] = v),
+                            onChanged: (v) {
+                              item['date'] = v;
+                              _triggerAutoSave();
+                            },
                           ),
                           const SizedBox(height: 4),
                           DropdownButtonFormField<String>(
@@ -509,9 +536,10 @@ class _Niveau2OrganisationChantierState
                                   ),
                                 )
                                 .toList(),
-                            onChanged: (v) => setState(
-                              () => item['etat'] = v ?? item['etat'],
-                            ),
+                            onChanged: (v) {
+                              setState(() => item['etat'] = v ?? item['etat']);
+                              _triggerAutoSave();
+                            },
                           ),
                           const SizedBox(height: 4),
                           TextFormField(
@@ -520,8 +548,10 @@ class _Niveau2OrganisationChantierState
                               labelText: 'Remarque',
                               border: OutlineInputBorder(),
                             ),
-                            onChanged: (v) =>
-                                setState(() => item['remarque'] = v),
+                            onChanged: (v) {
+                              item['remarque'] = v;
+                              _triggerAutoSave();
+                            },
                           ),
                         ],
                       ),
@@ -563,18 +593,24 @@ class _Niveau2OrganisationChantierState
                               labelText: 'Date',
                               border: OutlineInputBorder(),
                             ),
-                            onChanged: (v) => setState(() => item['date'] = v),
+                            onChanged: (v) {
+                              item['date'] = v;
+                              _triggerAutoSave();
+                            },
                           ),
                           const SizedBox(height: 4),
                           TextFormField(
                             initialValue: item['quantite'],
                             keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                             decoration: const InputDecoration(
                               labelText: 'Quantité',
                               border: OutlineInputBorder(),
                             ),
-                            onChanged: (v) =>
-                                setState(() => item['quantite'] = v),
+                            onChanged: (v) {
+                              item['quantite'] = v;
+                              _triggerAutoSave();
+                            },
                           ),
                           const SizedBox(height: 4),
                           DropdownButtonFormField<String>(
@@ -591,9 +627,10 @@ class _Niveau2OrganisationChantierState
                                   ),
                                 )
                                 .toList(),
-                            onChanged: (v) => setState(
-                              () => item['qualite'] = v ?? item['qualite'],
-                            ),
+                            onChanged: (v) {
+                              setState(() => item['qualite'] = v ?? item['qualite']);
+                              _triggerAutoSave();
+                            },
                           ),
                           const SizedBox(height: 4),
                           DropdownButtonFormField<String>(
@@ -615,10 +652,11 @@ class _Niveau2OrganisationChantierState
                                       ),
                                     )
                                     .toList(),
-                            onChanged: (v) => setState(
-                              () => item['recommandation'] =
-                                  v ?? item['recommandation'],
-                            ),
+                            onChanged: (v) {
+                              setState(() => item['recommandation'] =
+                                  v ?? item['recommandation']);
+                              _triggerAutoSave();
+                            },
                           ),
                         ],
                       ),

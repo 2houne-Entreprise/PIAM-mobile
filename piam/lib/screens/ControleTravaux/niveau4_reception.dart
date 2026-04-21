@@ -1,11 +1,11 @@
-import 'dart:convert';
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../services/database_service.dart';
+import '../../services/form_auto_sync_mixin.dart';
+import '../../presentation/widgets/app_form_fields.dart';
 import '../../presentation/widgets/form_header_widget.dart';
 import '../rapports/dashboard_rapports.dart' as new_dashboard;
 
@@ -18,7 +18,7 @@ class Niveau4Reception extends StatefulWidget {
   State<Niveau4Reception> createState() => _Niveau4ReceptionState();
 }
 
-class _Niveau4ReceptionState extends State<Niveau4Reception> {
+class _Niveau4ReceptionState extends State<Niveau4Reception> with FormAutoSyncMixin {
   final DatabaseService _dbService = DatabaseService();
   final ImagePicker _picker = ImagePicker();
 
@@ -44,6 +44,51 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
   };
 
   @override
+  void initState() {
+    super.initState();
+    // Listeners for auto-save
+    _dateReceptionTechniqueController.addListener(_triggerAutoSave);
+    _reservesTechniqueController.addListener(_triggerAutoSave);
+    _delaiTechniqueController.addListener(_triggerAutoSave);
+    _dateReceptionProvisoireController.addListener(_triggerAutoSave);
+    _reservesProvisoireController.addListener(_triggerAutoSave);
+    _delaiProvisoireController.addListener(_triggerAutoSave);
+  }
+
+  bool _isRestoring = false;
+
+  void _triggerAutoSave() {
+    if (_isRestoring || _localiteId == null) return;
+    
+    onFieldChanged(
+      type: 'programmation_travaux',
+      niveau: 'niveau4',
+      localiteId: _localiteId,
+      dataProvider: () => _getFormData(),
+    );
+  }
+
+  Map<String, dynamic> _getFormData() {
+    return {
+      'reception_technique': {
+        'date': _dateReceptionTechniqueController.text,
+        'reserves': _reservesTechniqueController.text,
+        'delai_levee_reserves': _delaiTechniqueController.text,
+        'photo': _photos['receptionTechnique'],
+        'photoGps': _photosGps['receptionTechnique'],
+      },
+      'reception_provisoire': {
+        'date': _dateReceptionProvisoireController.text,
+        'reserves': _reservesProvisoireController.text,
+        'delai_levee_reserves': _delaiProvisoireController.text,
+        'photo': _photos['receptionProvisoire'],
+        'photoGps': _photosGps['receptionProvisoire'],
+      },
+      'updatedAt': DateTime.now().toIso8601String(),
+    };
+  }
+
+  @override
   void dispose() {
     _dateReceptionTechniqueController.dispose();
     _reservesTechniqueController.dispose();
@@ -59,19 +104,21 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
       _localiteId = localiteId;
       _userId = userId;
     });
-    if (localiteId != null) _loadSavedData(localiteId);
+    if (localiteId != null) _loadDraft(localiteId);
   }
 
-  Future<void> _loadSavedData(int localiteId) async {
-    final data = await _dbService.getQuestionnaire(
-      type: 'reception',
+  Future<void> _loadDraft(int localiteId) async {
+    final draft = await _dbService.getQuestionnaire(
+      type: 'programmation_travaux',
+      niveau: 'niveau4',
       localiteId: localiteId,
     );
-    if (data == null || !mounted) return;
+    if (draft == null || !mounted) return;
 
+    _isRestoring = true;
     setState(() {
-      final rt = data['reception_technique'] ?? {};
-      final rp = data['reception_provisoire'] ?? {};
+      final rt = draft['reception_technique'] ?? {};
+      final rp = draft['reception_provisoire'] ?? {};
       
       _dateReceptionTechniqueController.text = rt['date'] ?? '';
       _reservesTechniqueController.text = rt['reserves'] ?? '';
@@ -87,6 +134,7 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
       _photosGps['receptionTechnique'] = (rt['photoGps'] as Map?)?.cast<String, String>();
       _photosGps['receptionProvisoire'] = (rp['photoGps'] as Map?)?.cast<String, String>();
     });
+    _isRestoring = false;
   }
 
   Future<void> _takePhoto(String sectionKey) async {
@@ -214,7 +262,7 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
         children: [
           _buildTextField('Date', dateController),
           _buildTextField('Réserves émises', reservesController, maxLines: 3),
-          _buildTextField('Délai fixé pour levée des réserves', delaiController),
+          AppNumberField(label: 'Délai fixé pour levée des réserves (jours)', controller: delaiController),
           _buildPhotoField(photoKey, photoLabel),
         ],
       ),
@@ -227,27 +275,13 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> {
       return;
     }
 
-    final dataMap = {
-      'reception_technique': {
-        'date': _dateReceptionTechniqueController.text,
-        'reserves': _reservesTechniqueController.text,
-        'delai_levee_reserves': _delaiTechniqueController.text,
-        'photo': _photos['receptionTechnique'],
-        'photoGps': _photosGps['receptionTechnique'],
-      },
-      'reception_provisoire': {
-        'date': _dateReceptionProvisoireController.text,
-        'reserves': _reservesProvisoireController.text,
-        'delai_levee_reserves': _delaiProvisoireController.text,
-        'photo': _photos['receptionProvisoire'],
-        'photoGps': _photosGps['receptionProvisoire'],
-      },
-    };
+    final data = _getFormData();
 
-    await _dbService.upsertQuestionnaire(
-      type: 'reception',
+    await saveAndSync(
+      type: 'programmation_travaux',
+      niveau: 'niveau4',
       localiteId: _localiteId,
-      dataMap: dataMap,
+      dataMap: data,
       userId: _userId,
     );
 

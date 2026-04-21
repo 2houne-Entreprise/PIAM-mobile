@@ -1,10 +1,12 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../services/database_service.dart';
+import '../../services/form_auto_sync_mixin.dart';
+import '../../presentation/widgets/app_form_fields.dart';
 
 class Niveau3ControleTravaux extends StatefulWidget {
   static const String routeName = '/niveau3';
@@ -15,7 +17,7 @@ class Niveau3ControleTravaux extends StatefulWidget {
   State<Niveau3ControleTravaux> createState() => _Niveau3ControleTravauxState();
 }
 
-class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
+class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> with FormAutoSyncMixin {
   final DatabaseService _dbService = DatabaseService();
   final ImagePicker _picker = ImagePicker();
 
@@ -610,23 +612,133 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
   void initState() {
     super.initState();
     _loadDraft();
+    
+    // Listeners for auto-save
+    _implantDateController.addListener(_triggerAutoSave);
+    _gpsXController.addListener(_triggerAutoSave);
+    _gpsYController.addListener(_triggerAutoSave);
+    _fouillesDebutController.addListener(_triggerAutoSave);
+    _fouillesFinController.addListener(_triggerAutoSave);
+    _sec2RemarqueController.addListener(_triggerAutoSave);
+    _sec3AprioriDateController.addListener(_triggerAutoSave);
+    _sec3AposterioriDateController.addListener(_triggerAutoSave);
+    _sec4AprioriDateController.addListener(_triggerAutoSave);
+    _sec4AposterioriDateController.addListener(_triggerAutoSave);
+    _sec5AprioriDateController.addListener(_triggerAutoSave);
+    _sec5AposterioriDateController.addListener(_triggerAutoSave);
+    _sec7AprioriDateController.addListener(_triggerAutoSave);
+    _sec7AposterioriDateController.addListener(_triggerAutoSave);
+    _sec8AprioriDateController.addListener(_triggerAutoSave);
+    _sec8AposterioriDateController.addListener(_triggerAutoSave);
+    _sec11AprioriDateController.addListener(_triggerAutoSave);
+    _sec11AposterioriDateController.addListener(_triggerAutoSave);
+    _autreRecommandationController.addListener(_triggerAutoSave);
+  }
+
+  bool _isRestoring = false;
+
+  void _triggerAutoSave() {
+    if (_isRestoring) return;
+    
+    // On utilise une approche asynchrone pour laisser le setState finir
+    onFieldChanged(
+      type: 'programmation_travaux',
+      niveau: 'niveau3',
+      localiteId: _localiteId,
+      dataProvider: () => _getFormData(),
+    );
+  }
+
+  int? _localiteId;
+
+  Map<String, dynamic> _getFormData() {
+    return {
+      'sectionStatus': _sectionStatus,
+      'section2': {
+        'dateImplantation': _implantDateController.text,
+        'gpsX': _gpsXController.text,
+        'gpsY': _gpsYController.text,
+        'dateDebutFouilles': _fouillesDebutController.text,
+        'dateFinFouilles': _fouillesFinController.text,
+        'fouillesConformes': _fouillesConformes,
+        'remarque': _sec2RemarqueController.text,
+        'photo': _photos['section2'],
+        'photoGps': _photosGps['section2'],
+      },
+      'section3': {
+        'aprioriDate': _sec3AprioriDateController.text,
+        'aposterioriDate': _sec3AposterioriDateController.text,
+        'apriori': _sec3APriori,
+        'aposteriori': _sec3APosteriori,
+        'photos': {
+          'apriori': _photos['section3Apriori'],
+          'aposteriori': _photos['section3Aposteriori'],
+        },
+      },
+      'section4': {
+        'aprioriDate': _sec4AprioriDateController.text,
+        'aposterioriDate': _sec4AposterioriDateController.text,
+        'apriori': _sec4APriori,
+        'aposteriori': _sec4APosteriori,
+        'photo': _photos['section4'],
+      },
+      'section5': {
+        'aprioriDate': _sec5AprioriDateController.text,
+        'aposterioriDate': _sec5AposterioriDateController.text,
+        'apriori': _sec5APriori,
+        'aposteriori': _sec5APosteriori,
+        'photo': _photos['section5'],
+      },
+      'section6': {'questions': _sec6},
+      'section7': {
+        'aprioriDate': _sec7AprioriDateController.text,
+        'aposterioriDate': _sec7AposterioriDateController.text,
+        'apriori': _sec7APriori,
+        'aposteriori': _sec7APosteriori,
+      },
+      'section8': {
+        'aprioriDate': _sec8AprioriDateController.text,
+        'aposterioriDate': _sec8AposterioriDateController.text,
+        'apriori': _sec8APriori,
+        'aposteriori': _sec8APosteriori,
+      },
+      'section9': {'questions': _sec9},
+      'section10': {'questions': _sec10},
+      'section11': {
+        'aprioriDate': _sec11AprioriDateController.text,
+        'aposterioriDate': _sec11AposterioriDateController.text,
+        'apriori': _sec11APriori,
+        'aposteriori': _sec11APosteriori,
+        'photo': _photos['section11'],
+      },
+      'section12': {'questions': _sec12},
+      'section13': {'avant': _sec13Avant, 'pendant': _sec13Pendant},
+      'section14': _sec14,
+      'section15': {
+        'appreciation': _appreciationAvancement,
+        'recommandation': _recommandation,
+        'autreRecommandation': _autreRecommandationController.text,
+      },
+      'updatedAt': DateTime.now().toIso8601String(),
+    };
   }
 
   /// Charge les données sauvegardées et restaure tous les contrôleurs et listes
   Future<void> _loadDraft() async {
     final param = await _dbService.getParametreUtilisateur();
-    final localiteId = param?['localite_id'];
-    if (localiteId == null) return;
-
-    final data = await _dbService.getQuestionnaire(
-      type: 'controle_travaux',
-      localiteId: localiteId,
+    _localiteId = param?['localite_id'];
+    
+    final draft = await _dbService.getQuestionnaire(
+      type: 'programmation_travaux',
+      niveau: 'niveau3',
+      localiteId: _localiteId,
     );
-    if (data == null || !mounted) return;
+    if (draft == null || !mounted) return;
 
+    _isRestoring = true;
     setState(() {
       // Statuts des sections
-      final ss = data['sectionStatus'];
+      final ss = draft['sectionStatus'];
       if (ss is Map) {
         ss.forEach((k, v) {
           if (_sectionStatus.containsKey(k)) _sectionStatus[k] = v.toString();
@@ -634,7 +746,7 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
       }
 
       // Section 2
-      final s2 = data['section2'];
+      final s2 = draft['section2'];
       if (s2 is Map) {
         _implantDateController.text = s2['dateImplantation'] ?? '';
         _gpsXController.text = s2['gpsX'] ?? '';
@@ -648,7 +760,7 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
       }
 
       // Section 3
-      final s3 = data['section3'];
+      final s3 = draft['section3'];
       if (s3 is Map) {
         _sec3AprioriDateController.text = s3['aprioriDate'] ?? '';
         _sec3AposterioriDateController.text = s3['aposterioriDate'] ?? '';
@@ -659,7 +771,7 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
       }
 
       // Section 4
-      final s4 = data['section4'];
+      final s4 = draft['section4'];
       if (s4 is Map) {
         _sec4AprioriDateController.text = s4['aprioriDate'] ?? '';
         _sec4AposterioriDateController.text = s4['aposterioriDate'] ?? '';
@@ -669,7 +781,7 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
       }
 
       // Section 5
-      final s5 = data['section5'];
+      final s5 = draft['section5'];
       if (s5 is Map) {
         _sec5AprioriDateController.text = s5['aprioriDate'] ?? '';
         _sec5AposterioriDateController.text = s5['aposterioriDate'] ?? '';
@@ -679,10 +791,10 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
       }
 
       // Section 6
-      _restoreQuestionList(_sec6, data['section6']?['questions']);
+      _restoreQuestionList(_sec6, draft['section6']?['questions']);
 
       // Section 7
-      final s7 = data['section7'];
+      final s7 = draft['section7'];
       if (s7 is Map) {
         _sec7AprioriDateController.text = s7['aprioriDate'] ?? '';
         _sec7AposterioriDateController.text = s7['aposterioriDate'] ?? '';
@@ -691,7 +803,7 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
       }
 
       // Section 8
-      final s8 = data['section8'];
+      final s8 = draft['section8'];
       if (s8 is Map) {
         _sec8AprioriDateController.text = s8['aprioriDate'] ?? '';
         _sec8AposterioriDateController.text = s8['aposterioriDate'] ?? '';
@@ -700,12 +812,12 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
       }
 
       // Sections 9, 10, 12
-      _restoreQuestionList(_sec9, data['section9']?['questions']);
-      _restoreQuestionList(_sec10, data['section10']?['questions']);
-      _restoreQuestionList(_sec12, data['section12']?['questions']);
+      _restoreQuestionList(_sec9, draft['section9']?['questions']);
+      _restoreQuestionList(_sec10, draft['section10']?['questions']);
+      _restoreQuestionList(_sec12, draft['section12']?['questions']);
 
       // Section 11
-      final s11 = data['section11'];
+      final s11 = draft['section11'];
       if (s11 is Map) {
         _sec11AprioriDateController.text = s11['aprioriDate'] ?? '';
         _sec11AposterioriDateController.text = s11['aposterioriDate'] ?? '';
@@ -715,20 +827,21 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
       }
 
       // Section 13
-      _restoreQuestionList(_sec13Avant, data['section13']?['avant']);
-      _restoreQuestionList(_sec13Pendant, data['section13']?['pendant']);
+      _restoreQuestionList(_sec13Avant, draft['section13']?['avant']);
+      _restoreQuestionList(_sec13Pendant, draft['section13']?['pendant']);
 
       // Section 14
-      _restoreQuestionList(_sec14, data['section14']);
+      _restoreQuestionList(_sec14, draft['section14']);
 
       // Section 15
-      final s15 = data['section15'];
+      final s15 = draft['section15'];
       if (s15 is Map) {
         _appreciationAvancement = s15['appreciation'] ?? 'Satisfaisant';
         _recommandation = s15['recommandation'] ?? 'Mobiliser le personnel requis';
         _autreRecommandationController.text = s15['autreRecommandation'] ?? '';
       }
     });
+    _isRestoring = false;
   }
 
   /// Restaure les réponses et remarques d'une liste de questions depuis les données JSON
@@ -827,15 +940,19 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
           ChoiceChip(
             label: const Text('Achevé'),
             selected: _sectionStatus[sectionKey] == 'Achevé',
-            onSelected: (_) =>
-                setState(() => _sectionStatus[sectionKey] = 'Achevé'),
+            onSelected: (_) {
+              setState(() => _sectionStatus[sectionKey] = 'Achevé');
+              _triggerAutoSave();
+            },
           ),
           const SizedBox(width: 8),
           ChoiceChip(
             label: const Text('En cours'),
             selected: _sectionStatus[sectionKey] == 'En cours',
-            onSelected: (_) =>
-                setState(() => _sectionStatus[sectionKey] = 'En cours'),
+            onSelected: (_) {
+              setState(() => _sectionStatus[sectionKey] = 'En cours');
+              _triggerAutoSave();
+            },
           ),
         ],
       ),
@@ -912,7 +1029,10 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
                   labelText: item['responseLabel'] as String? ?? 'Réponse',
                   border: const OutlineInputBorder(),
                 ),
-                onChanged: (value) => item['response'] = value,
+                onChanged: (value) {
+                  item['response'] = value;
+                  _triggerAutoSave();
+                },
               ),
               if (showRemark) ...[
                 const SizedBox(height: 8),
@@ -922,7 +1042,10 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
                     labelText: 'Remarque',
                     border: OutlineInputBorder(),
                   ),
-                  onChanged: (value) => item['remark'] = value,
+                  onChanged: (value) {
+                    item['remark'] = value;
+                    _triggerAutoSave();
+                  },
                 ),
               ],
             ],
@@ -973,8 +1096,10 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
                     ),
                   )
                   .toList(),
-              onChanged: (value) =>
-                  setState(() => item['response'] = value ?? ''),
+              onChanged: (value) {
+                setState(() => item['response'] = value ?? '');
+                _triggerAutoSave();
+              },
             ),
             if (showRemark) ...[
               const SizedBox(height: 8),
@@ -984,7 +1109,10 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
                   labelText: 'Remarque',
                   border: OutlineInputBorder(),
                 ),
-                onChanged: (value) => item['remark'] = value,
+                onChanged: (value) {
+                  item['remark'] = value;
+                  _triggerAutoSave();
+                },
               ),
             ],
           ],
@@ -1064,110 +1192,12 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
   }
 
   Future<void> _saveNiveau3() async {
-    final param = await _dbService.getParametreUtilisateur();
-    final activeLocaliteId = param?['localite_id'];
+    final payload = _getFormData();
 
-    if (activeLocaliteId == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Veuillez d\'abord effectuer le paramétrage initial'),
-        ),
-      );
-      return;
-    }
-
-    final payload = {
-      'sectionStatus': _sectionStatus,
-      'section1': {'status': _sectionStatus['section1']},
-      'section2': {
-        'status': _sectionStatus['section2'],
-        'dateImplantation': _implantDateController.text,
-        'gpsX': _gpsXController.text,
-        'gpsY': _gpsYController.text,
-        'dateDebutFouilles': _fouillesDebutController.text,
-        'dateFinFouilles': _fouillesFinController.text,
-        'fouillesConformes': _fouillesConformes,
-        'remarque': _sec2RemarqueController.text,
-        'photo': _photos['section2'],
-        'photoGps': _photosGps['section2'],
-      },
-      'section3': {
-        'status': _sectionStatus['section3'],
-        'aprioriDate': _sec3AprioriDateController.text,
-        'aposterioriDate': _sec3AposterioriDateController.text,
-        'apriori': _sec3APriori,
-        'aposteriori': _sec3APosteriori,
-        'photos': {
-          'apriori': _photos['section3Apriori'],
-          'aposteriori': _photos['section3Aposteriori'],
-        },
-        'photosGps': {
-          'apriori': _photosGps['section3Apriori'],
-          'aposteriori': _photosGps['section3Aposteriori'],
-        },
-      },
-      'section4': {
-        'status': _sectionStatus['section4'],
-        'aprioriDate': _sec4AprioriDateController.text,
-        'aposterioriDate': _sec4AposterioriDateController.text,
-        'apriori': _sec4APriori,
-        'aposteriori': _sec4APosteriori,
-        'photo': _photos['section4'],
-        'photoGps': _photosGps['section4'],
-      },
-      'section5': {
-        'status': _sectionStatus['section5'],
-        'aprioriDate': _sec5AprioriDateController.text,
-        'aposterioriDate': _sec5AposterioriDateController.text,
-        'apriori': _sec5APriori,
-        'aposteriori': _sec5APosteriori,
-        'photo': _photos['section5'],
-        'photoGps': _photosGps['section5'],
-      },
-      'section6': {'status': _sectionStatus['section6'], 'questions': _sec6},
-      'section7': {
-        'status': _sectionStatus['section7'],
-        'aprioriDate': _sec7AprioriDateController.text,
-        'aposterioriDate': _sec7AposterioriDateController.text,
-        'apriori': _sec7APriori,
-        'aposteriori': _sec7APosteriori,
-      },
-      'section8': {
-        'status': _sectionStatus['section8'],
-        'aprioriDate': _sec8AprioriDateController.text,
-        'aposterioriDate': _sec8AposterioriDateController.text,
-        'apriori': _sec8APriori,
-        'aposteriori': _sec8APosteriori,
-      },
-      'section9': {'status': _sectionStatus['section9'], 'questions': _sec9},
-      'section10': {'status': _sectionStatus['section10'], 'questions': _sec10},
-      'section11': {
-        'status': _sectionStatus['section11'],
-        'aprioriDate': _sec11AprioriDateController.text,
-        'aposterioriDate': _sec11AposterioriDateController.text,
-        'apriori': _sec11APriori,
-        'aposteriori': _sec11APosteriori,
-        'photo': _photos['section11'],
-        'photoGps': _photosGps['section11'],
-      },
-      'section12': {'status': _sectionStatus['section12'], 'questions': _sec12},
-      'section13': {'avant': _sec13Avant, 'pendant': _sec13Pendant},
-      'section14': _sec14,
-      'section15': {
-        'appreciation': _appreciationAvancement,
-        'recommandation': _recommandation,
-        'autreRecommandation': _recommandation == 'Autre (à préciser)'
-            ? _autreRecommandationController.text
-            : '',
-      },
-      'photos': _photos,
-      'photosGps': _photosGps,
-    };
-
-    await _dbService.upsertQuestionnaire(
-      type: 'controle_travaux',
-      localiteId: activeLocaliteId,
+    await saveAndSync(
+      type: 'programmation_travaux',
+      niveau: 'niveau3',
+      localiteId: _localiteId,
       dataMap: payload,
     );
 
@@ -1228,8 +1258,8 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> {
                 'Date d’implantation de l’ouvrage',
                 _implantDateController,
               ),
-              _buildTextField('Coordonnées GPS (X)', _gpsXController),
-              _buildTextField('Coordonnées GPS (Y)', _gpsYController),
+              AppDecimalField(label: 'Coordonnées GPS (X)', controller: _gpsXController),
+              AppDecimalField(label: 'Coordonnées GPS (Y)', controller: _gpsYController),
               _buildTextField(
                 'Date de démarrage des fouilles',
                 _fouillesDebutController,

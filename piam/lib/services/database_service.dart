@@ -445,15 +445,17 @@ class DatabaseService {
     try {
       if (Hive.isBoxOpen('form_drafts')) {
         final box = Hive.box('form_drafts');
-        final key = type; // Clé simplifiée (type uniquement)
+        final key = type; // On récupère l'objet global
         
         final draftData = box.get(key);
-        if (draftData != null) {
-          // On a trouvé un brouillon récent dans Hive
-          final Map<String, dynamic> hiveMap = Map<String, dynamic>.from(draftData);
-          hiveMap['_status'] = 'draft';
-          debugPrint('[DatabaseService] Chargement du draft depuis Hive pour $key');
-          return hiveMap;
+        if (draftData != null && draftData is Map) {
+          if (niveau != null && draftData.containsKey(niveau)) {
+            // Extraction des données de ce niveau spécifique
+            return Map<String, dynamic>.from(draftData[niveau] as Map);
+          } else if (niveau == null) {
+            // Remontée directe si c'est un formulaire plat (sans niveau)
+            return Map<String, dynamic>.from(draftData);
+          }
         }
       }
     } catch (e) {

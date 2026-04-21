@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/database_service.dart';
+import '../../services/form_auto_sync_mixin.dart';
+import '../../presentation/widgets/app_form_fields.dart';
 import 'niveau2_organisation_chantier.dart';
 import '../../data/reference_data.dart';
 
@@ -12,7 +14,7 @@ class Niveau1DonneesGenerales extends StatefulWidget {
       _Niveau1DonneesGeneralesState();
 }
 
-class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
+class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> with FormAutoSyncMixin {
   final _formKey = GlobalKey<FormState>();
   final _projectNameController = TextEditingController();
   final _companyNameController = TextEditingController();
@@ -71,6 +73,8 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
 
   String? _siteSelectionne;
   bool _isGeoLoading = true;
+  Map<String, dynamic>? _paramInit;
+  bool _isLoading = false;
 
   bool get _isEcole => _etablissement == 'Ecole fondamentale';
   bool get _isStructureSante =>
@@ -279,16 +283,115 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
     // Use current site ID from initial parameters if form hasn't explicitly selected one
     final activeLocaliteId = _localiteIds[_localite] ?? _paramInit?['localite_id'];
 
-    await _dbService.upsertQuestionnaire(
-      type: 'identification', // 'identification' used by RapportService
-      localiteId: activeLocaliteId,
-      dataMap: data,
-    );
+    setState(() => _isLoading = true);
+    try {
+      await saveAndSync(
+        type: 'programmation_travaux',
+        niveau: 'niveau1',
+        localiteId: activeLocaliteId,
+        dataMap: data,
+      );
 
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Projet sauvegardé')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Projet sauvegardé')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erreur : $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeForm();
+    _loadParametrageInitial();
+    
+    // Ajout des listeners pour l'auto-save
+    _projectNameController.addListener(_triggerAutoSave);
+    _companyNameController.addListener(_triggerAutoSave);
+    _codeMesreController.addListener(_triggerAutoSave);
+    _codeMsController.addListener(_triggerAutoSave);
+    _effectifController.addListener(_triggerAutoSave);
+    _nbPotentielsController.addListener(_triggerAutoSave);
+    _intituleProjetController.addListener(_triggerAutoSave);
+    _marcheTravauxController.addListener(_triggerAutoSave);
+    _numeroMarcheController.addListener(_triggerAutoSave);
+    _nomEntrepriseMarcheController.addListener(_triggerAutoSave);
+    _delaiMarcheController.addListener(_triggerAutoSave);
+    _dateDemarrageMarcheController.addListener(_triggerAutoSave);
+    _marcheControleTravauxController.addListener(_triggerAutoSave);
+    _numeroMarcheControleController.addListener(_triggerAutoSave);
+    _bureauControleController.addListener(_triggerAutoSave);
+    _nomControleurController.addListener(_triggerAutoSave);
+    _latrinesArealiserController.addListener(_triggerAutoSave);
+    _nbBlocsController.addListener(_triggerAutoSave);
+    _nbCabinesController.addListener(_triggerAutoSave);
+    _nbDLMController.addListener(_triggerAutoSave);
+    _autresTravauxController.addListener(_triggerAutoSave);
+    _autrePreciserController.addListener(_triggerAutoSave);
+  }
+
+  bool _isRestoring = false;
+
+  void _triggerAutoSave() {
+    if (_isRestoring) return;
+    
+    onFieldChanged(
+      type: 'programmation_travaux',
+      niveau: 'niveau1',
+      localiteId: _paramInit?['localite_id'],
+      dataProvider: () => _getFormData(),
+    );
+  }
+
+  Map<String, dynamic> _getFormData() {
+    return {
+      'projectName': _projectNameController.text.trim(),
+      'companyName': _companyNameController.text.trim(),
+      'wilaya': _wilaya ?? '',
+      'wilayaId': _wilayaIds[_wilaya]?.toString() ?? '',
+      'moughataaId': _moughataaIds[_moughataa]?.toString() ?? '',
+      'communeId': _communeIds[_commune]?.toString() ?? '',
+      'localiteId': _localiteIds[_localite]?.toString() ?? '',
+      'codeAnsade': _codeANSADE,
+      'etablissement': _etablissement,
+      'infrastructureId': _siteLabelsToId[_siteSelectionne]?.toString() ?? '',
+      'infrastructureType': _siteLabelsToType[_siteSelectionne]?.toString() ?? '',
+      'infrastructureCode': _siteLabelsToCode[_siteSelectionne]?.toString() ?? '',
+      'intituleProjet': _intituleProjetController.text.trim(),
+      'marcheTravaux': _marcheTravauxController.text.trim(),
+      'numeroMarche': _numeroMarcheController.text.trim(),
+      'nomEntreprise': _nomEntrepriseMarcheController.text.trim(),
+      'delaiMarche': _delaiMarcheController.text.trim(),
+      'dateDemarrageMarche': _dateDemarrageMarcheController.text.trim(),
+      'marcheControleTravaux': _marcheControleTravauxController.text.trim(),
+      'numeroMarcheControle': _numeroMarcheControleController.text.trim(),
+      'bureauControle': _bureauControleController.text.trim(),
+      'nomControleur': _nomControleurController.text.trim(),
+      'latrinesArealiser': _latrinesArealiserController.text.trim(),
+      'typeLatrinesArealiser': _typeLatrinesArealiser,
+      'toit': _toit,
+      'nbBlocs': int.tryParse(_nbBlocsController.text) ?? 0,
+      'nbCabines': int.tryParse(_nbCabinesController.text) ?? 0,
+      'nbDLM': int.tryParse(_nbDLMController.text) ?? 0,
+      'autresTravaux': _autresTravauxController.text.trim(),
+      'autrePreciser': _autrePreciserController.text.trim(),
+      'destructionAnciennes': _destructionAncienne ? 'Oui' : 'Non',
+      'constructionMur': _constructionMur ? 'Oui' : 'Non',
+      'codeMesre': _codeMesreController.text.trim(),
+      'codeMs': _codeMsController.text.trim(),
+      'effectif': int.tryParse(_effectifController.text) ?? 0,
+      'nbPotentiels': int.tryParse(_nbPotentielsController.text) ?? 0,
+      'updatedAt': DateTime.now().toIso8601String(),
+    };
   }
 
   @override
@@ -321,15 +424,6 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
     super.dispose();
   }
 
-  Map<String, dynamic>? _paramInit;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeForm();
-    _loadParametrageInitial();
-  }
-
   Future<void> _loadParametrageInitial() async {
     final param = await _dbService.getParametreUtilisateur();
     if (mounted) setState(() => _paramInit = param);
@@ -339,15 +433,15 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
 
   /// Charge les données sauvegardées (brouillon ou complet) et pré-remplit les champs
   Future<void> _loadDraft() async {
-    final localiteId = _paramInit?['localite_id'] as int?;
-    if (localiteId == null) return;
-
     final draft = await _dbService.getQuestionnaire(
-      type: 'identification',
-      localiteId: localiteId,
+      type: 'programmation_travaux',
+      niveau: 'niveau1',
+      localiteId: _paramInit?['localite_id'],
     );
+    
     if (draft == null || !mounted) return;
 
+    _isRestoring = true;
     setState(() {
       _projectNameController.text = draft['projectName'] ?? '';
       _companyNameController.text = draft['companyName'] ?? '';
@@ -377,6 +471,7 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
       _destructionAncienne = draft['destructionAnciennes'] == 'Oui';
       _constructionMur = draft['constructionMur'] == 'Oui';
     });
+    _isRestoring = false;
   }
 
   @override
@@ -493,12 +588,9 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                TextFormField(
+                AppNumberField(
+                  label: 'Effectif de l\'école',
                   controller: _effectifController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Effectif de l\'école',
-                  ),
                 ),
                 const SizedBox(height: 8),
               ],
@@ -512,12 +604,9 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
                 ),
                 const SizedBox(height: 8),
               ],
-              TextFormField(
+              AppNumberField(
+                label: 'Nb potentiels d\'usagers',
                 controller: _nbPotentielsController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Nb potentiels d\'usagers',
-                ),
               ),
 
               const SizedBox(height: 16),
@@ -650,28 +739,19 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> {
                 'Toit en bac alu',
               ], (val) => setState(() => _toit = val ?? _toit)),
               const SizedBox(height: 8),
-              TextFormField(
+              AppNumberField(
+                label: 'Nombre de blocs de latrines à réaliser',
                 controller: _nbBlocsController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre de blocs de latrines à réaliser',
-                ),
               ),
               const SizedBox(height: 8),
-              TextFormField(
+              AppNumberField(
+                label: 'Nombre de cabines à réaliser',
                 controller: _nbCabinesController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre de cabines à réaliser',
-                ),
               ),
               const SizedBox(height: 8),
-              TextFormField(
+              AppNumberField(
+                label: 'Nombre de dispositifs de lave-mains à installer',
                 controller: _nbDLMController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre de dispositifs de lave-mains à installer',
-                ),
               ),
               const SizedBox(height: 8),
               TextFormField(

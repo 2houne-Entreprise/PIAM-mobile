@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Questionnaire;
+use App\Models\ControleTravaux;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
 
 class QuestionnaireController extends Controller
 {
@@ -36,6 +38,9 @@ class QuestionnaireController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        Log::info("=== SYNC REQUEST START ===");
+        Log::info($request->all());
+
         $validator = Validator::make($request->all(), [
             'type'        => 'required|string|max:100',
             'data_json'   => 'required',
@@ -79,17 +84,129 @@ class QuestionnaireController extends Controller
             $payload = array_merge($payload, $mappedColumns);
         }
 
-        // Upsert : un seul questionnaire par (type, localite_id, user_id)
-        $questionnaire = Questionnaire::updateOrCreate(
-            [
-                'type'        => $data['type'],
-                'localite_id' => $data['localite_id'] ?? null,
-                'user_id'     => $data['user_id'],
-            ],
-            $payload
-        );
+        $storeLocaliteId = ($data['localite_id'] === 0 || $data['localite_id'] === "0") ? null : ($data['localite_id'] ?? null);
 
-        return response()->json($questionnaire, 201);
+        // Upsert : un seul questionnaire par (type, localite_id, user_id)
+        try {
+            $questionnaire = Questionnaire::updateOrCreate(
+                [
+                    'type'        => $data['type'],
+                    'localite_id' => $storeLocaliteId,
+                    'user_id'     => $data['user_id'],
+                ],
+                $payload
+            );
+
+            // Gestion spécifique pour le Contrôle des Travaux
+            if ($data['type'] === 'programmation_travaux') {
+                $this->saveToControleTravaux($data['user_id'], $data['localite_id'], $jsonArray, $encodedJson);
+            }
+
+            Log::info("Questionnaire [{$data['type']}] saved for User [{$data['user_id']}]");
+            return response()->json($questionnaire, 201);
+        } catch (\Exception $e) {
+            Log::error("Error saving questionnaire: " . $e->getMessage());
+            return response()->json(['error' => 'Internal server error during save'], 500);
+        }
+    }
+
+    /**
+     * Enregistre les données spécifiquement dans la table controle_travaux.
+     */
+    private function saveToControleTravaux($userId, $localiteId, $jsonArray, $encodedJson)
+    {
+        // On traite localite_id: 0 comme NULL pour éviter les problèmes d'intégrité
+        $finalLocaliteId = ($localiteId === 0 || $localiteId === "0") ? null : $localiteId;
+
+        $ctPayload = [
+            'data_json' => $encodedJson,
+            'donnees'   => $encodedJson, // Pour compatibilité avec la structure existante
+            'sync_status' => 'synced',
+            'status'    => 'completed',
+        ];
+
+        // Tentative de déterminer le niveau principal
+        if (isset($jsonArray['niveau'])) {
+            $ctPayload['niveau'] = $jsonArray['niveau'];
+        } elseif (isset($jsonArray['niveau1'])) {
+            $ctPayload['niveau'] = 'Niveau 1';
+        } elseif (isset($jsonArray['niveau2'])) {
+            $ctPayload['niveau'] = 'Niveau 2';
+        } elseif (isset($jsonArray['niveau3'])) {
+            $ctPayload['niveau'] = 'Niveau 3';
+        } elseif (isset($jsonArray['niveau4'])) {
+            $ctPayload['niveau'] = 'Niveau 4';
+        }
+
+        // Mappage des niveaux
+        $mapping = [
+            'niveau1' => [
+                'siteSelectionne' => 'site_selectionne',
+                'etablissement' => 'etablissement',
+                'natureTravaux' => 'nature_travaux',
+                'niveauEcole' => 'niveau_ecole',
+                'typeStructure' => 'type_structure',
+            ],
+            'niveau2' => [
+                'nomEntreprise' => 'nom_entreprise',
+                'numeroMarche' => 'numero_marche',
+                'intituleProjet' => 'intitule_projet',
+                'dateDemarrage' => 'date_demarrage',
+                'delaiMarche' => 'delai_marche',
+                'chefChantier' => 'chef_chantier',
+                'bureauControle' => 'bureau_controle',
+                'effectifEncadrement' => 'effectif_encadrement',
+                'effectifOuvrier' => 'effectif_ouvrier',
+                'effectifTotal' => 'effectif_total',
+                'casques' => 'casques',
+                'gilets' => 'gilets',
+                'masques' => 'masques',
+                'chaussures' => 'chaussures',
+                'gants' => 'gants',
+                'premierSecours' => 'premier_secours',
+            ],
+            'niveau3' => [
+                'sectionStatus' => 'section_status',
+                'appreciationAvancement' => 'appreciation_avancement',
+                'recommandation' => 'recommandations_principales',
+            ],
+            'niveau4' => [
+                'dateReceptionProvisoire' => 'date_reception_provisoire',
+                'dateReceptionDefinitive' => 'date_reception_definitive',
+                'avisReception' => 'avis_reception',
+            ]
+        ];
+
+        foreach ($mapping as $niveau => $fields) {
+            if (isset($jsonArray[$niveau]) && is_array($jsonArray[$niveau])) {
+                foreach ($fields as $flutterKey => $dbCol) {
+                    if (isset($jsonArray[$niveau][$flutterKey])) {
+                        $val = $jsonArray[$niveau][$flutterKey];
+                        
+                        // Conversion dates
+                        if (str_starts_with($dbCol, 'date_')) {
+                             if (is_string($val) && preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $val)) {
+                                $parts = explode('/', $val);
+                                $val = "{$parts[2]}-{$parts[1]}-{$parts[0]}";
+                            }
+                        }
+                        
+                        // Conversion JSON
+                        if (is_array($val)) {
+                            $val = json_encode($val);
+                        }
+
+                        $ctPayload[$dbCol] = $val;
+                    }
+                }
+            }
+        }
+
+        ControleTravaux::updateOrCreate(
+            ['user_id' => $userId, 'localite_id' => $finalLocaliteId],
+            $ctPayload
+        );
+        Log::info("Data duplicated to controle_travaux table for Localite [$finalLocaliteId]");
     }
 
     /**
@@ -244,17 +361,30 @@ class QuestionnaireController extends Controller
                 $payload = array_merge($payload, $mappedColumns);
             }
 
+            $syncLocaliteId = ($item['localite_id'] === 0 || $item['localite_id'] === "0") ? null : ($item['localite_id'] ?? null);
+
             $questionnaire = Questionnaire::updateOrCreate(
                 [
                     'type'        => $item['type'],
-                    'localite_id' => $item['localite_id'] ?? null,
+                    'localite_id' => $syncLocaliteId,
                     'user_id'     => $userId,
                 ],
                 $payload
             );
 
+            // Gestion spécifique pour le Contrôle des Travaux en batch
+            if ($item['type'] === 'programmation_travaux') {
+                try {
+                    $this->saveToControleTravaux($userId, $item['localite_id'] ?? null, $jsonArray, $encodedJson);
+                } catch (\Exception $e) {
+                    Log::error("Error duplicating to controle_travaux in batch: " . $e->getMessage());
+                }
+            }
+
             $results[] = $questionnaire;
         }
+
+        Log::info("Batch sync completed for User [$userId]. Count: " . count($results));
 
         return response()->json([
             'message' => count($results) . ' questionnaire(s) synchronisé(s)',
