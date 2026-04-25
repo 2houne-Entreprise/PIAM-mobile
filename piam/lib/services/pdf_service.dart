@@ -78,14 +78,13 @@ class PdfService {
       headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white, fontSize: 9),
       headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
       cellStyle: const pw.TextStyle(fontSize: 8),
-      headers: ['Nom du site', 'Ouvrage', 'Remise site', 'Avancement', 'Appréciation'],
+      headers: ['Site', 'Progression', 'Ouvrage', 'Réception'],
       data: tableau.map((row) {
         return [
           row['nomSite'] ?? '-',
-          '${row['nbBlocs'] ?? 0}b/${row['nbCabines'] ?? 0}c',
-          row['dateRemiseSite'] ?? '-',
-          '${(row['avancement'] as double?)?.toStringAsFixed(1) ?? '0.0'}%',
-          row['appreciation'] ?? '-',
+          '${(row['avancement'] as double?)?.toStringAsFixed(0) ?? '0'}%',
+          '${row['nbBlocs'] ?? 0}b / ${row['nbCabines'] ?? 0}c',
+          row['dtRecepProv'] ?? '-',
         ];
       }).toList(),
     );

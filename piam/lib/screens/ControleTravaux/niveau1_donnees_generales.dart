@@ -46,6 +46,7 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> with 
   final _autrePreciserController = TextEditingController();
 
   final DatabaseService _dbService = DatabaseService();
+  static const String _formType = 'controle_travaux_n1';
 
   String? _wilaya;
   String? _moughataa;
@@ -286,8 +287,7 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> with 
     setState(() => _isLoading = true);
     try {
       await saveAndSync(
-        type: 'programmation_travaux',
-        niveau: 'niveau1',
+        type: _formType,
         localiteId: activeLocaliteId,
         dataMap: data,
       );
@@ -344,10 +344,11 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> with 
   void _triggerAutoSave() {
     if (_isRestoring) return;
     
+    final activeLocaliteId = _localiteIds[_localite] ?? _paramInit?['localite_id'];
+    
     onFieldChanged(
-      type: 'programmation_travaux',
-      niveau: 'niveau1',
-      localiteId: _paramInit?['localite_id'],
+      type: _formType,
+      localiteId: activeLocaliteId,
       dataProvider: () => _getFormData(),
     );
   }
@@ -434,8 +435,7 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> with 
   /// Charge les données sauvegardées (brouillon ou complet) et pré-remplit les champs
   Future<void> _loadDraft() async {
     final draft = await _dbService.getQuestionnaire(
-      type: 'programmation_travaux',
-      niveau: 'niveau1',
+      type: _formType,
       localiteId: _paramInit?['localite_id'],
     );
     
@@ -563,29 +563,22 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> with 
                   ),
                 ),
               const SizedBox(height: 8),
-              TextFormField(
+              AppTextField(
+                label: 'Nom du site',
                 controller: _projectNameController,
-                decoration: const InputDecoration(labelText: 'Nom du site *'),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Champ requis' : null,
+                required: true,
               ),
-              const SizedBox(height: 8),
-              TextFormField(
+              AppTextField(
+                label: 'Nom de l\'entreprise',
                 controller: _companyNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Nom de l\'entreprise *',
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Champ requis' : null,
+                required: true,
               ),
               const SizedBox(height: 8),
               if (_isEcole) ...[
-                TextFormField(
+                AppTextField(
+                  label: 'Code MESRE',
                   controller: _codeMesreController,
-                  decoration: const InputDecoration(
-                    labelText: 'Code MESRE',
-                    hintText: 'En attendant codification MESRE',
-                  ),
+                  hint: 'En attendant codification MESRE',
                 ),
                 const SizedBox(height: 8),
                 AppNumberField(
@@ -595,12 +588,10 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> with 
                 const SizedBox(height: 8),
               ],
               if (_isStructureSante) ...[
-                TextFormField(
+                AppTextField(
+                  label: 'Code MS',
                   controller: _codeMsController,
-                  decoration: const InputDecoration(
-                    labelText: 'Code MS',
-                    hintText: 'En attendant codification MS',
-                  ),
+                  hint: 'En attendant codification MS',
                 ),
                 const SizedBox(height: 8),
               ],
@@ -616,74 +607,45 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> with 
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 8),
-              TextFormField(
+              AppTextField(
+                label: 'Intitulé du projet',
                 controller: _intituleProjetController,
-                decoration: const InputDecoration(
-                  labelText: 'Intitulé du projet',
-                ),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
+              AppTextField(
+                label: 'Marché de travaux',
                 controller: _marcheTravauxController,
-                decoration: const InputDecoration(
-                  labelText: 'Marché de travaux',
-                ),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
+              AppTextField(
+                label: 'Numéro du marché',
                 controller: _numeroMarcheController,
-                decoration: const InputDecoration(
-                  labelText: 'Numéro du marché',
-                ),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
+              AppTextField(
+                label: 'Nom de l\'entreprise',
                 controller: _nomEntrepriseMarcheController,
-                decoration: const InputDecoration(
-                  labelText: 'Nom de l\'entreprise',
-                ),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
+              AppNumberField(
+                label: 'Délai du marché (en jours ou mois)',
                 controller: _delaiMarcheController,
-                decoration: const InputDecoration(
-                  labelText: 'Délai du marché (en jours ou mois)',
-                ),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
+              AppDateField(
+                label: 'Date de démarrage du marché',
                 controller: _dateDemarrageMarcheController,
-                decoration: const InputDecoration(
-                  labelText: 'Date de démarrage du marché',
-                ),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
+              AppTextField(
+                label: 'Marché de contrôle des travaux',
                 controller: _marcheControleTravauxController,
-                decoration: const InputDecoration(
-                  labelText: 'Marché de contrôle des travaux',
-                ),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
+              AppTextField(
+                label: 'Numéro du marché de contrôle',
                 controller: _numeroMarcheControleController,
-                decoration: const InputDecoration(
-                  labelText: 'Numéro du marché de contrôle',
-                ),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
+              AppTextField(
+                label: 'Bureau chargé du contrôle',
                 controller: _bureauControleController,
-                decoration: const InputDecoration(
-                  labelText: 'Bureau chargé du contrôle',
-                ),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
+              AppTextField(
+                label: 'Nom du contrôleur',
                 controller: _nomControleurController,
-                decoration: const InputDecoration(
-                  labelText: 'Nom du contrôleur',
-                ),
               ),
               const SizedBox(height: 16),
               const Divider(),
@@ -718,11 +680,9 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> with 
                 title: const Text('Construction mur'),
               ),
               const SizedBox(height: 8),
-              TextFormField(
+              AppTextField(
+                label: 'Latrines à réaliser',
                 controller: _latrinesArealiserController,
-                decoration: const InputDecoration(
-                  labelText: 'Latrines à réaliser',
-                ),
               ),
               const SizedBox(height: 8),
               _buildDropdown(
@@ -754,16 +714,14 @@ class _Niveau1DonneesGeneralesState extends State<Niveau1DonneesGenerales> with 
                 controller: _nbDLMController,
               ),
               const SizedBox(height: 8),
-              TextFormField(
+              AppTextField(
+                label: 'Autres travaux',
                 controller: _autresTravauxController,
-                decoration: const InputDecoration(labelText: 'Autres travaux'),
               ),
-              const SizedBox(height: 8),
-              TextFormField(
+              AppTextField(
+                label: 'Autre (à préciser)',
                 controller: _autrePreciserController,
-                decoration: const InputDecoration(
-                  labelText: 'Autre (à préciser)',
-                ),
+                maxLines: 2,
               ),
               const SizedBox(height: 24),
               ElevatedButton(

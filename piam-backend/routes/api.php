@@ -37,4 +37,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Dashboard
     Route::get('/dashboard-stats', [QuestionnaireController::class, 'dashboardStats']);
+
+    // Rapports (Source MySQL)
+    Route::get('/reports/suivi/{localiteId?}', [QuestionnaireController::class, 'getReportSuivi']);
+    Route::get('/reports/synthese', [QuestionnaireController::class, 'getReportSynthese']);
 });

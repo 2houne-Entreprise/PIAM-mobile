@@ -3,7 +3,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:piam/services/database_service.dart';
 import 'package:piam/services/questionnaire_api_service.dart';
 import 'package:piam/services/api_client.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'dart:async';
 
 /// Mixin pour ajouter la synchronisation automatique aux formulaires.
@@ -29,7 +28,6 @@ mixin FormAutoSyncMixin {
   /// Callback optionnel pour notifier l'UI après une sauvegarde.
   void Function(String status)? onSyncStatusChanged;
 
-  /// Enregistre un brouillon localement dans Hive en arrière-plan sans déclencher la synchronisation.
   Future<void> saveDraft({
     required String type,
     required int? localiteId,
@@ -38,30 +36,31 @@ mixin FormAutoSyncMixin {
     String? niveau,
   }) async {
     try {
-      final box = Hive.box('form_drafts');
-      final key = type;
-      
-      // Conversion sécurisée en Map standard pour Hive
-      final safeMap = Map<String, dynamic>.from(dataMap);
+      Map<String, dynamic> finalData = Map<String, dynamic>.from(dataMap);
 
       if (niveau != null) {
-        // Chargement du brouillon global du formulaire
-        final existing = box.get(key) ?? {};
-        final existingMap = Map<String, dynamic>.from(existing as Map);
+        // Chargement du brouillon global depuis SQLite
+        final existing = await _dbService.getQuestionnaire(type: type, localiteId: localiteId);
+        final existingMap = existing != null ? Map<String, dynamic>.from(existing) : <String, dynamic>{};
         
         // Mise à jour uniquement du niveau actuel
-        existingMap[niveau] = safeMap;
-        
-        // Sauvegarde de l'objet global dans Hive
-        await box.put(key, existingMap);
-      } else {
-        await box.put(key, safeMap);
+        existingMap[niveau] = Map<String, dynamic>.from(dataMap);
+        finalData = existingMap;
       }
       
-      debugPrint('[FormAutoSync] Brouillon Hive "$key" sauvegardé');
+      // Sauvegarde dans SQLite avec le statut 'draft'
+      await _dbService.upsertQuestionnaire(
+        type: type,
+        localiteId: localiteId,
+        dataMap: finalData,
+        userId: userId,
+        status: 'draft',
+      );
+      
+      debugPrint('[FormAutoSync] Brouillon SQLite "$type" sauvegardé (status: draft)');
       onSyncStatusChanged?.call('draft');
     } catch (e) {
-      debugPrint('[FormAutoSync] Erreur sauvegarde Hive: $e');
+      debugPrint('[FormAutoSync] Erreur sauvegarde brouillon SQLite: $e');
     }
   }
 
@@ -99,24 +98,6 @@ mixin FormAutoSyncMixin {
   }) async {
     Map<String, dynamic> finalData = Map<String, dynamic>.from(dataMap);
 
-    // Si un niveau est spécifié, on tente de récupérer le draft complet fusionné depuis Hive
-    if (niveau != null) {
-      try {
-        if (Hive.isBoxOpen('form_drafts')) {
-          final box = Hive.box('form_drafts');
-          final existing = box.get(type);
-          if (existing != null && existing is Map) {
-            final merged = Map<String, dynamic>.from(existing);
-            // On s'assure que le niveau actuel est à jour dans le draft fusionné
-            merged[niveau] = dataMap;
-            finalData = merged;
-          }
-        }
-      } catch (e) {
-        debugPrint('[FormAutoSync] Erreur fusion Hive lors du saveAndSync: $e');
-      }
-    }
-
     // 1. Sauvegarde locale (statut complété) dans SQLite
     await _dbService.upsertQuestionnaire(
       type: type,
@@ -125,14 +106,6 @@ mixin FormAutoSyncMixin {
       userId: userId,
       status: 'completed',
     );
-
-    // 1.5 Nettoyage du brouillon Hive (optionnel, on peut garder le draft ou le supprimer)
-    // Ici on choisit de supprimer car c'est "finalisé" dans SQLite
-    try {
-      if (Hive.isBoxOpen('form_drafts')) {
-        await Hive.box('form_drafts').delete(type);
-      }
-    } catch (_) {}
 
     // 2. Tentative de sync API en arrière-plan
     _trySyncInBackground(type, localiteId);

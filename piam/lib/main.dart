@@ -39,12 +39,19 @@ import 'screens/rapports/rapport_synthese_screen.dart';
 import 'services/api_client.dart';
 import 'services/sync_service.dart';
 
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
+import 'package:flutter/foundation.dart';
+import 'package:sqflite/sqflite.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Hive.initFlutter();
-  await Hive.openBox('form_drafts');
+
+  // Initialisation SQLite pour le Web
+  if (kIsWeb) {
+    databaseFactory = databaseFactoryFfiWeb;
+  }
+
   await bootstrap();
 
   // ── Initialisation API ────────────────────────────────────────────────────

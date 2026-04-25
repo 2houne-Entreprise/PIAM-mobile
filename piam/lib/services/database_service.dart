@@ -3,7 +3,6 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import '../data/reference_data.dart';
 
 /// Service principal d'accès à la base de données SQLite locale.
@@ -441,27 +440,7 @@ class DatabaseService {
     required int? localiteId,
     String? niveau,
   }) async {
-    // ── INTERCEPTION HIVE (Drafts) ──────────────────────────────────────────
-    try {
-      if (Hive.isBoxOpen('form_drafts')) {
-        final box = Hive.box('form_drafts');
-        final key = type; // On récupère l'objet global
-        
-        final draftData = box.get(key);
-        if (draftData != null && draftData is Map) {
-          if (niveau != null && draftData.containsKey(niveau)) {
-            // Extraction des données de ce niveau spécifique
-            return Map<String, dynamic>.from(draftData[niveau] as Map);
-          } else if (niveau == null) {
-            // Remontée directe si c'est un formulaire plat (sans niveau)
-            return Map<String, dynamic>.from(draftData);
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('[DatabaseService] Erreur lors de la lecture depuis Hive : $e');
-    }
-    // ──────────────────────────────────────────────────────────────────────
+    // SQFLite implementation
 
     if (kIsWeb) {
       final p = await _prefs;

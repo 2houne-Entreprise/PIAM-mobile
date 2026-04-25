@@ -78,6 +78,8 @@ dependencies:
   printing: ^5.11.0
   hive: ^2.2.3
   hive_flutter: ^1.1.0
+  sqflite_common_ffi: ^2.4.0+2
+  sqflite_common_ffi_web: ^1.1.1
 
 dev_dependencies:
   flutter_test:

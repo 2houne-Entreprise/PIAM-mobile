@@ -162,6 +162,36 @@ class QuestionnaireApiService {
     }
   }
 
+  // ── Rapports ───────────────────────────────────────────────────────────────
+  
+  /// Récupère le rapport de suivi pour une localité spécifique (Source MySQL).
+  Future<Map<String, dynamic>?> fetchReportSuivi(int localiteId) async {
+    try {
+      final response = await _api.get('/reports/suivi/$localiteId');
+      if (response.statusCode == 200) {
+        return response.data as Map<String, dynamic>;
+      }
+      return null;
+    } on DioException catch (e) {
+      debugPrint('[QuestionnaireApiService] fetchReportSuivi error: ${e.message}');
+      return null;
+    }
+  }
+
+  /// Récupère les données de synthèse globale (Source MySQL).
+  Future<Map<String, dynamic>?> fetchReportSynthese() async {
+    try {
+      final response = await _api.get('/reports/synthese');
+      if (response.statusCode == 200) {
+        return response.data as Map<String, dynamic>;
+      }
+      return null;
+    } on DioException catch (e) {
+      debugPrint('[QuestionnaireApiService] fetchReportSynthese error: ${e.message}');
+      return null;
+    }
+  }
+
   // ── Utilitaires ───────────────────────────────────────────────────────────
 
   /// Prépare un questionnaire SQLite pour envoi à l'API.

@@ -16,6 +16,7 @@ class Niveau2OrganisationChantier extends StatefulWidget {
 class _Niveau2OrganisationChantierState
     extends State<Niveau2OrganisationChantier> with FormAutoSyncMixin {
   final DatabaseService _dbService = DatabaseService();
+  static const String _formType = 'controle_travaux_n2';
 
   final _personnelForm = GlobalKey<FormState>();
 
@@ -169,6 +170,21 @@ class _Niveau2OrganisationChantierState
   final _materiauxNomController = TextEditingController();
   final _materiauxQuantiteController = TextEditingController();
 
+  Future<void> _selectDateForChecklist(Map<String, dynamic> item) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+    if (picked != null) {
+      setState(() {
+        item['date'] = "${picked.day.toString().padLeft(2, '0')}/${picked.month.toString().padLeft(2, '0')}/${picked.year}";
+      });
+      _triggerAutoSave();
+    }
+  }
+
   @override
   void dispose() {
     _nomPersonnelController.dispose();
@@ -206,8 +222,7 @@ class _Niveau2OrganisationChantierState
     if (_isRestoring) return;
     
     onFieldChanged(
-      type: 'programmation_travaux',
-      niveau: 'niveau2',
+      type: _formType,
       localiteId: _paramInit?['localite_id'],
       dataProvider: () => _getFormData(),
     );
@@ -255,8 +270,7 @@ class _Niveau2OrganisationChantierState
   /// Restaure les données sauvegardées pour les 3 sections
   Future<void> _loadDraft() async {
     final draft = await _dbService.getQuestionnaire(
-      type: 'programmation_travaux',
-      niveau: 'niveau2',
+      type: _formType,
       localiteId: _paramInit?['localite_id'],
     );
     
@@ -322,8 +336,7 @@ class _Niveau2OrganisationChantierState
     final data = _getFormData();
 
     await saveAndSync(
-      type: 'programmation_travaux',
-      niveau: 'niveau2',
+      type: _formType,
       localiteId: activeLocaliteId,
       dataMap: data,
     );
@@ -342,8 +355,7 @@ class _Niveau2OrganisationChantierState
     final data = _getFormData();
 
     await saveAndSync(
-      type: 'programmation_travaux',
-      niveau: 'niveau2',
+      type: _formType,
       localiteId: activeLocaliteId,
       dataMap: data,
     );
@@ -362,8 +374,7 @@ class _Niveau2OrganisationChantierState
     final data = _getFormData();
 
     await saveAndSync(
-      type: 'programmation_travaux',
-      niveau: 'niveau2',
+      type: _formType,
       localiteId: activeLocaliteId,
       dataMap: data,
     );
@@ -401,7 +412,7 @@ class _Niveau2OrganisationChantierState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildTextField(
+                    AppTextField(
                       controller: _nomPersonnelController,
                       label: 'Nom',
                       required: true,
@@ -423,9 +434,9 @@ class _Niveau2OrganisationChantierState
                       ),
                     ),
                     const SizedBox(height: 8),
-                    _buildTextField(
+                    AppDateField(
                       controller: _dateArriveeController,
-                      label: 'Date arrivée (jj/mm/aaaa)',
+                      label: 'Date arrivée',
                       required: true,
                     ),
                     const SizedBox(height: 8),
@@ -474,10 +485,10 @@ class _Niveau2OrganisationChantierState
                       value: _gilet,
                       onChanged: (v) => setState(() => _gilet = v),
                     ),
-                    _buildTextField(
+                    AppTextField(
                       controller: _remarquePersonnelController,
                       label: 'Remarque',
-                      required: false,
+                      maxLines: 2,
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton(
@@ -511,15 +522,14 @@ class _Niveau2OrganisationChantierState
                           ),
                           const SizedBox(height: 4),
                           TextFormField(
-                            initialValue: item['date'],
+                            controller: TextEditingController(text: item['date']),
+                            readOnly: true,
+                            onTap: () => _selectDateForChecklist(item),
                             decoration: const InputDecoration(
                               labelText: 'Date',
                               border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.calendar_today, size: 20),
                             ),
-                            onChanged: (v) {
-                              item['date'] = v;
-                              _triggerAutoSave();
-                            },
                           ),
                           const SizedBox(height: 4),
                           DropdownButtonFormField<String>(
@@ -542,12 +552,9 @@ class _Niveau2OrganisationChantierState
                             },
                           ),
                           const SizedBox(height: 4),
-                          TextFormField(
-                            initialValue: item['remarque'],
-                            decoration: const InputDecoration(
-                              labelText: 'Remarque',
-                              border: OutlineInputBorder(),
-                            ),
+                          AppTextField(
+                            label: 'Remarque',
+                            controller: TextEditingController(text: item['remarque']),
                             onChanged: (v) {
                               item['remarque'] = v;
                               _triggerAutoSave();
@@ -588,25 +595,19 @@ class _Niveau2OrganisationChantierState
                           ),
                           const SizedBox(height: 4),
                           TextFormField(
-                            initialValue: item['date'],
+                            controller: TextEditingController(text: item['date']),
+                            readOnly: true,
+                            onTap: () => _selectDateForChecklist(item),
                             decoration: const InputDecoration(
                               labelText: 'Date',
                               border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.calendar_today, size: 20),
                             ),
-                            onChanged: (v) {
-                              item['date'] = v;
-                              _triggerAutoSave();
-                            },
                           ),
                           const SizedBox(height: 4),
-                          TextFormField(
-                            initialValue: item['quantite'],
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                            decoration: const InputDecoration(
-                              labelText: 'Quantité',
-                              border: OutlineInputBorder(),
-                            ),
+                          AppNumberField(
+                            label: 'Quantité',
+                            controller: TextEditingController(text: item['quantite']),
                             onChanged: (v) {
                               item['quantite'] = v;
                               _triggerAutoSave();

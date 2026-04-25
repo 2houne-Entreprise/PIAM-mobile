@@ -53,8 +53,8 @@ class CalculAvancementService {
       final Map<String, dynamic> donnees = jsonDecode(jsonControleTravaux);
 
       // Section 1 : Installation du chantier
-      if (donnees['section1'] != null) {
-        final status = donnees['section1']['status'];
+      if (donnees['sectionStatus'] != null && donnees['sectionStatus']['section1'] != null) {
+        final status = donnees['sectionStatus']['section1'];
         if (status == 'Achevé') {
           avancementTotal += bareme['sec1']!;
         } else if (status == 'En cours') {

@@ -21,9 +21,11 @@ class Niveau4Reception extends StatefulWidget {
 class _Niveau4ReceptionState extends State<Niveau4Reception> with FormAutoSyncMixin {
   final DatabaseService _dbService = DatabaseService();
   final ImagePicker _picker = ImagePicker();
+  static const String _formType = 'controle_travaux_n4';
 
   int? _localiteId;
   dynamic _userId;
+  Map<String, dynamic>? _paramInit;
 
   final TextEditingController _dateReceptionTechniqueController = TextEditingController();
   final TextEditingController _reservesTechniqueController = TextEditingController();
@@ -46,6 +48,7 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> with FormAutoSyncMi
   @override
   void initState() {
     super.initState();
+    _loadParametrageInitial();
     // Listeners for auto-save
     _dateReceptionTechniqueController.addListener(_triggerAutoSave);
     _reservesTechniqueController.addListener(_triggerAutoSave);
@@ -61,11 +64,21 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> with FormAutoSyncMi
     if (_isRestoring || _localiteId == null) return;
     
     onFieldChanged(
-      type: 'programmation_travaux',
-      niveau: 'niveau4',
+      type: _formType,
       localiteId: _localiteId,
       dataProvider: () => _getFormData(),
     );
+  }
+
+  Future<void> _loadParametrageInitial() async {
+    final param = await _dbService.getParametreUtilisateur();
+    if (!mounted) return;
+    setState(() {
+      _paramInit = param;
+      _localiteId = param?['localite_id'] as int?;
+      _userId = param?['user_id'];
+    });
+    if (_localiteId != null) await _loadDraft();
   }
 
   Map<String, dynamic> _getFormData() {
@@ -99,19 +112,25 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> with FormAutoSyncMi
     super.dispose();
   }
 
+  /// L'ancien callback FormHeaderWidget est conservé pour rétro-compatibilité UI
   void _onLocalisationLoaded(int? localiteId, dynamic userId) {
-    setState(() {
-      _localiteId = localiteId;
-      _userId = userId;
-    });
-    if (localiteId != null) _loadDraft(localiteId);
+    if (!mounted) return;
+    // On met à jour si l'ID a changé ou si on n'avait rien
+    if (_localiteId != localiteId) {
+      setState(() {
+        _localiteId = localiteId;
+        _userId = userId;
+      });
+      if (localiteId != null) {
+        _loadDraft();
+      }
+    }
   }
 
-  Future<void> _loadDraft(int localiteId) async {
+  Future<void> _loadDraft() async {
     final draft = await _dbService.getQuestionnaire(
-      type: 'programmation_travaux',
-      niveau: 'niveau4',
-      localiteId: localiteId,
+      type: _formType,
+      localiteId: _localiteId,
     );
     if (draft == null || !mounted) return;
 
@@ -173,6 +192,7 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> with FormAutoSyncMi
           'lng': position.longitude.toString(),
         };
       });
+      _triggerAutoSave();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -183,16 +203,11 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> with FormAutoSyncMi
 
   Widget _buildTextField(String label, TextEditingController controller, {int maxLines = 1}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: TextField(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: AppTextField(
+        label: label,
         controller: controller,
         maxLines: maxLines,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-          filled: true,
-          fillColor: Colors.white,
-        ),
       ),
     );
   }
@@ -260,7 +275,7 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> with FormAutoSyncMi
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
         childrenPadding: const EdgeInsets.only(bottom: 12),
         children: [
-          _buildTextField('Date', dateController),
+          AppDateField(label: 'Date', controller: dateController),
           _buildTextField('Réserves émises', reservesController, maxLines: 3),
           AppNumberField(label: 'Délai fixé pour levée des réserves (jours)', controller: delaiController),
           _buildPhotoField(photoKey, photoLabel),
@@ -278,8 +293,7 @@ class _Niveau4ReceptionState extends State<Niveau4Reception> with FormAutoSyncMi
     final data = _getFormData();
 
     await saveAndSync(
-      type: 'programmation_travaux',
-      niveau: 'niveau4',
+      type: _formType,
       localiteId: _localiteId,
       dataMap: data,
       userId: _userId,

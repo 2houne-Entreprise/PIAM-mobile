@@ -19,6 +19,7 @@ class Niveau3ControleTravaux extends StatefulWidget {
 
 class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> with FormAutoSyncMixin {
   final DatabaseService _dbService = DatabaseService();
+  static const String _formType = 'controle_travaux_n3';
   final ImagePicker _picker = ImagePicker();
 
   final Map<String, String> _sectionStatus = {
@@ -640,10 +641,8 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> with Fo
   void _triggerAutoSave() {
     if (_isRestoring) return;
     
-    // On utilise une approche asynchrone pour laisser le setState finir
     onFieldChanged(
-      type: 'programmation_travaux',
-      niveau: 'niveau3',
+      type: _formType,
       localiteId: _localiteId,
       dataProvider: () => _getFormData(),
     );
@@ -727,10 +726,9 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> with Fo
   Future<void> _loadDraft() async {
     final param = await _dbService.getParametreUtilisateur();
     _localiteId = param?['localite_id'];
-    
+
     final draft = await _dbService.getQuestionnaire(
-      type: 'programmation_travaux',
-      niveau: 'niveau3',
+      type: _formType,
       localiteId: _localiteId,
     );
     if (draft == null || !mounted) return;
@@ -965,18 +963,19 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> with Fo
     int maxLines = 1,
     TextInputType keyboardType = TextInputType.text,
   }) {
+    if (keyboardType == TextInputType.number) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: AppNumberField(label: label, controller: controller),
+      );
+    }
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: TextField(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: AppTextField(
+        label: label,
         controller: controller,
         maxLines: maxLines,
         keyboardType: keyboardType,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
-          filled: true,
-          fillColor: Colors.white,
-        ),
       ),
     );
   }
@@ -992,7 +991,7 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> with Fo
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
-          _buildTextField('Date', controller),
+          AppDateField(label: 'Date', controller: controller),
         ],
       ),
     );
@@ -1020,28 +1019,29 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> with Fo
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
-              TextFormField(
-                initialValue: item['response']?.toString() ?? '',
-                keyboardType: type == 'number'
-                    ? TextInputType.number
-                    : TextInputType.text,
-                decoration: InputDecoration(
-                  labelText: item['responseLabel'] as String? ?? 'Réponse',
-                  border: const OutlineInputBorder(),
+              if (type == 'number')
+                AppNumberField(
+                  label: item['responseLabel'] as String? ?? 'Réponse',
+                  controller: TextEditingController(text: item['response']?.toString() ?? ''),
+                  onChanged: (value) {
+                    item['response'] = value;
+                    _triggerAutoSave();
+                  },
+                )
+              else
+                AppTextField(
+                  label: item['responseLabel'] as String? ?? 'Réponse',
+                  controller: TextEditingController(text: item['response']?.toString() ?? ''),
+                  onChanged: (value) {
+                    item['response'] = value;
+                    _triggerAutoSave();
+                  },
                 ),
-                onChanged: (value) {
-                  item['response'] = value;
-                  _triggerAutoSave();
-                },
-              ),
               if (showRemark) ...[
                 const SizedBox(height: 8),
-                TextFormField(
-                  initialValue: item['remark']?.toString() ?? '',
-                  decoration: const InputDecoration(
-                    labelText: 'Remarque',
-                    border: OutlineInputBorder(),
-                  ),
+                AppTextField(
+                  label: 'Remarque',
+                  controller: TextEditingController(text: item['remark']?.toString() ?? ''),
                   onChanged: (value) {
                     item['remark'] = value;
                     _triggerAutoSave();
@@ -1195,8 +1195,7 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> with Fo
     final payload = _getFormData();
 
     await saveAndSync(
-      type: 'programmation_travaux',
-      niveau: 'niveau3',
+      type: _formType,
       localiteId: _localiteId,
       dataMap: payload,
     );
@@ -1254,19 +1253,19 @@ class _Niveau3ControleTravauxState extends State<Niveau3ControleTravaux> with Fo
             title: '2. Implantation et terrassement',
             sectionKey: 'section2',
             children: [
-              _buildTextField(
-                'Date d’implantation de l’ouvrage',
-                _implantDateController,
+              AppDateField(
+                label: 'Date d’implantation de l’ouvrage',
+                controller: _implantDateController,
               ),
               AppDecimalField(label: 'Coordonnées GPS (X)', controller: _gpsXController),
               AppDecimalField(label: 'Coordonnées GPS (Y)', controller: _gpsYController),
-              _buildTextField(
-                'Date de démarrage des fouilles',
-                _fouillesDebutController,
+              AppDateField(
+                label: 'Date de démarrage des fouilles',
+                controller: _fouillesDebutController,
               ),
-              _buildTextField(
-                'Date de fin des fouilles',
-                _fouillesFinController,
+              AppDateField(
+                label: 'Date de fin des fouilles',
+                controller: _fouillesFinController,
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(

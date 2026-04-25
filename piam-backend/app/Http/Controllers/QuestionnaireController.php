@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 
+use Illuminate\Support\Facades\DB;
+
 class QuestionnaireController extends Controller
 {
     /**
@@ -97,9 +99,14 @@ class QuestionnaireController extends Controller
                 $payload
             );
 
-            // Gestion spécifique pour le Contrôle des Travaux
+            // Gestion spécifique pour le Contrôle des Travaux (ancien type groupé)
             if ($data['type'] === 'programmation_travaux') {
                 $this->saveToControleTravaux($data['user_id'], $data['localite_id'], $jsonArray, $encodedJson);
+            }
+
+            // Gestion des nouveaux types par niveau (un type = un niveau)
+            if (in_array($data['type'], ['controle_travaux_n1', 'controle_travaux_n2', 'controle_travaux_n3', 'controle_travaux_n4'])) {
+                $this->saveControleTravauxFromNiveau($data['user_id'], $data['localite_id'], $data['type'], $jsonArray, $encodedJson);
             }
 
             Log::info("Questionnaire [{$data['type']}] saved for User [{$data['user_id']}]");
@@ -138,52 +145,65 @@ class QuestionnaireController extends Controller
             $ctPayload['niveau'] = 'Niveau 4';
         }
 
-        // Mappage des niveaux
+        // Mappage des niveaux (Correction des clés Flutter pour correspondre à l'app mobile)
         $mapping = [
             'niveau1' => [
-                'siteSelectionne' => 'site_selectionne',
-                'etablissement' => 'etablissement',
-                'natureTravaux' => 'nature_travaux',
-                'niveauEcole' => 'niveau_ecole',
-                'typeStructure' => 'type_structure',
+                'intituleProjet' => 'intitule_projet',
+                'projectName'    => 'intitule_projet', // fallback
+                'nomEntreprise'  => 'nom_entreprise',
+                'companyName'    => 'nom_entreprise', // fallback
+                'numeroMarche'   => 'numero_marche',
+                'dateDemarrageMarche' => 'date_demarrage',
+                'delaiMarche'    => 'delai_marche',
+                'etablissement'  => 'etablissement',
             ],
             'niveau2' => [
-                'nomEntreprise' => 'nom_entreprise',
-                'numeroMarche' => 'numero_marche',
-                'intituleProjet' => 'intitule_projet',
-                'dateDemarrage' => 'date_demarrage',
-                'delaiMarche' => 'delai_marche',
-                'chefChantier' => 'chef_chantier',
-                'bureauControle' => 'bureau_controle',
-                'effectifEncadrement' => 'effectif_encadrement',
-                'effectifOuvrier' => 'effectif_ouvrier',
-                'effectifTotal' => 'effectif_total',
-                'casques' => 'casques',
-                'gilets' => 'gilets',
-                'masques' => 'masques',
-                'chaussures' => 'chaussures',
-                'gants' => 'gants',
-                'premierSecours' => 'premier_secours',
+                'personnel.nom' => 'chef_chantier',
+                'personnel.masqueNb' => 'masques',
+                'personnel.casque' => 'casques',
+                'personnel.gants' => 'gants',
+                'personnel.chaussures' => 'chaussures',
+                'personnel.gilet' => 'gilets',
+                'personnel.premiersSecours' => 'premier_secours',
+                'personnel.dateArrivee' => 'date_demarrage_chantier', // optionnel
             ],
             'niveau3' => [
                 'sectionStatus' => 'section_status',
-                'appreciationAvancement' => 'appreciation_avancement',
-                'recommandation' => 'recommandations_principales',
+                'section15.appreciation' => 'appreciation_avancement',
+                'section15.recommandation' => 'recommandations_principales',
             ],
             'niveau4' => [
-                'dateReceptionProvisoire' => 'date_reception_provisoire',
-                'dateReceptionDefinitive' => 'date_reception_definitive',
-                'avisReception' => 'avis_reception',
+                'reception_technique.date' => 'date_reception_technique',
+                'reception_provisoire.date' => 'date_reception_provisoire',
+                'reception_technique.avis' => 'avis_reception',
             ]
         ];
 
         foreach ($mapping as $niveau => $fields) {
             if (isset($jsonArray[$niveau]) && is_array($jsonArray[$niveau])) {
+                $niveauData = $jsonArray[$niveau];
                 foreach ($fields as $flutterKey => $dbCol) {
-                    if (isset($jsonArray[$niveau][$flutterKey])) {
-                        $val = $jsonArray[$niveau][$flutterKey];
-                        
-                        // Conversion dates
+                    $val = null;
+                    
+                    // Support pour les clés imbriquées (ex: personnel.nom)
+                    if (str_contains($flutterKey, '.')) {
+                        $keys = explode('.', $flutterKey);
+                        $temp = $niveauData;
+                        foreach ($keys as $k) {
+                            if (isset($temp[$k])) {
+                                $temp = $temp[$k];
+                            } else {
+                                $temp = null;
+                                break;
+                            }
+                        }
+                        $val = $temp;
+                    } else {
+                        $val = $niveauData[$flutterKey] ?? null;
+                    }
+
+                    if ($val !== null) {
+                        // Conversion dates (format fr vers iso)
                         if (str_starts_with($dbCol, 'date_')) {
                              if (is_string($val) && preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $val)) {
                                 $parts = explode('/', $val);
@@ -191,7 +211,7 @@ class QuestionnaireController extends Controller
                             }
                         }
                         
-                        // Conversion JSON
+                        // Conversion JSON pour les colonnes MySQL de type JSON
                         if (is_array($val)) {
                             $val = json_encode($val);
                         }
@@ -201,12 +221,80 @@ class QuestionnaireController extends Controller
                 }
             }
         }
+        
+        // Enrichissement final avec le mappage général (pour ne rien rater des colonnes existantes dans P1)
+        $generalMapped = $this->mapDataJsonToColumns($jsonArray);
+        $ctPayload = array_merge($generalMapped, $ctPayload);
 
         ControleTravaux::updateOrCreate(
             ['user_id' => $userId, 'localite_id' => $finalLocaliteId],
             $ctPayload
         );
         Log::info("Data duplicated to controle_travaux table for Localite [$finalLocaliteId]");
+    }
+
+    /**
+     * Rapport de Suivi : Retourne les données consolidées pour un site ou TOUS les sites.
+     * GET /api/reports/suivi/{localiteId?}
+     */
+    public function getReportSuivi(int $localiteId = 0): JsonResponse
+    {
+        $userId = Auth::id();
+
+        if ($localiteId > 0) {
+            // Un seul site
+            $ct = ControleTravaux::where('user_id', $userId)
+                ->where('localite_id', $localiteId)
+                ->first();
+
+            $questionnaires = Questionnaire::where('user_id', $userId)
+                ->where('localite_id', $localiteId)
+                ->get()
+                ->keyBy('type');
+
+            return response()->json([
+                'controle_travaux' => $ct,
+                'questionnaires'   => $questionnaires,
+                'localite_id'      => $localiteId,
+            ]);
+        } else {
+            // Tous les sites de l'utilisateur
+            $cts = ControleTravaux::where('user_id', $userId)->get();
+            $questionnaires = Questionnaire::where('user_id', $userId)
+                ->whereIn('type', ['identification', 'programmation_travaux', 'reception'])
+                ->get();
+
+            return response()->json([
+                'controle_travaux' => $cts,
+                'questionnaires'   => $questionnaires,
+            ]);
+        }
+    }
+
+    /**
+     * Rapport de Synthèse : Retourne les agrégats par type de site.
+     * GET /api/reports/synthese
+     */
+    public function getReportSynthese(): JsonResponse
+    {
+        $userId = Auth::id();
+
+        // Jointure ou agrégation sur les questionnaires de type 'identification' et 'programmation_travaux'
+        // Pour faire simple, on récupère tout et on laisse le client ou une boucle PHP agréger.
+        // Mais comme l'utilisateur veut du "vrai MySQL", on peut faire une requête d'agrégation.
+        
+        $identificationData = Questionnaire::where('user_id', $userId)
+            ->where('type', 'identification')
+            ->get();
+
+        $progData = Questionnaire::where('user_id', $userId)
+            ->where('type', 'programmation_travaux')
+            ->get();
+
+        return response()->json([
+            'identification' => $identificationData,
+            'programmation'  => $progData,
+        ]);
     }
 
     /**
@@ -372,12 +460,21 @@ class QuestionnaireController extends Controller
                 $payload
             );
 
-            // Gestion spécifique pour le Contrôle des Travaux en batch
+            // Gestion spécifique pour le Contrôle des Travaux en batch (ancien type)
             if ($item['type'] === 'programmation_travaux') {
                 try {
                     $this->saveToControleTravaux($userId, $item['localite_id'] ?? null, $jsonArray, $encodedJson);
                 } catch (\Exception $e) {
                     Log::error("Error duplicating to controle_travaux in batch: " . $e->getMessage());
+                }
+            }
+
+            // Gestion des nouveaux types par niveau en batch
+            if (in_array($item['type'], ['controle_travaux_n1', 'controle_travaux_n2', 'controle_travaux_n3', 'controle_travaux_n4'])) {
+                try {
+                    $this->saveControleTravauxFromNiveau($userId, $item['localite_id'] ?? null, $item['type'], $jsonArray, $encodedJson);
+                } catch (\Exception $e) {
+                    Log::error("Error saving controle_travaux from niveau in batch: " . $e->getMessage());
                 }
             }
 
@@ -566,6 +663,122 @@ class QuestionnaireController extends Controller
             }
         }
         return $mapped;
+    }
+
+    /**
+     * Enregistre les données d'un niveau spécifique dans la table controle_travaux.
+     * Appelé quand le type est 'controle_travaux_n1', 'n2', 'n3' ou 'n4'.
+     * Les données arrivent à plat (sans imbrication de niveau).
+     */
+    private function saveControleTravauxFromNiveau($userId, $localiteId, string $type, ?array $jsonArray, string $encodedJson): void
+    {
+        $finalLocaliteId = ($localiteId === 0 || $localiteId === '0') ? null : $localiteId;
+
+        // Payload de base commun à tous les niveaux
+        // Note: seules les colonnes existantes dans controle_travaux sont utilisées
+        $ctPayload = [
+            'data_json'   => $encodedJson,
+            'sync_status' => 'synced',
+        ];
+
+        if ($jsonArray === null) {
+            ControleTravaux::updateOrCreate(
+                ['user_id' => $userId, 'localite_id' => $finalLocaliteId],
+                $ctPayload
+            );
+            return;
+        }
+
+        // Mappage spécifique selon le niveau
+        switch ($type) {
+            case 'controle_travaux_n1':
+                // Données générales (Niveau 1)
+                $ctPayload['etablissement']   = $jsonArray['etablissement'] ?? null;
+                $ctPayload['intitule_projet']  = $jsonArray['intituleProjet'] ?? $jsonArray['projectName'] ?? null;
+                $ctPayload['nom_entreprise']   = $jsonArray['nomEntreprise'] ?? $jsonArray['companyName'] ?? null;
+                $ctPayload['numero_marche']    = $jsonArray['numeroMarche'] ?? null;
+                $ctPayload['delai_marche']     = $jsonArray['delaiMarche'] ?? null;
+                $ctPayload['bureau_controle']  = $jsonArray['bureauControle'] ?? null;
+
+                // Conversion de la date de démarrage
+                $dateRaw = $jsonArray['dateDemarrageMarche'] ?? null;
+                if ($dateRaw && preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $dateRaw)) {
+                    $parts = explode('/', $dateRaw);
+                    $dateRaw = "{$parts[2]}-{$parts[1]}-{$parts[0]}";
+                }
+                if ($dateRaw && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateRaw)) {
+                    $dateRaw = null; // Ignorer les formats invalides
+                }
+                $ctPayload['date_demarrage'] = $dateRaw;
+                break;
+
+            case 'controle_travaux_n2':
+                // Organisation chantier (Niveau 2)
+                $personnel = $jsonArray['personnel'] ?? [];
+                $ctPayload['chef_chantier']   = $personnel['nom'] ?? null;
+                $ctPayload['casques']         = $personnel['casque'] ?? null;
+                $ctPayload['gilets']          = $personnel['gilet'] ?? null;
+                $ctPayload['masques']         = isset($personnel['masqueNb']) ? (string)$personnel['masqueNb'] : null;
+                $ctPayload['chaussures']      = $personnel['chaussures'] ?? null;
+                $ctPayload['gants']           = $personnel['gants'] ?? null;
+                $ctPayload['premier_secours'] = $personnel['premiersSecours'] ?? null;
+
+                // Date d'arrivée comme date de démarrage chantier
+                $dateArr = $personnel['dateArrivee'] ?? null;
+                if ($dateArr && preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $dateArr)) {
+                    $parts = explode('/', $dateArr);
+                    $dateArr = "{$parts[2]}-{$parts[1]}-{$parts[0]}";
+                }
+                if ($dateArr && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateArr)) {
+                    $dateArr = null;
+                }
+                $ctPayload['date_demarrage_chantier'] = $dateArr;
+                break;
+
+            case 'controle_travaux_n3':
+                // Contrôle technique (Niveau 3)
+                $sectionStatus = $jsonArray['sectionStatus'] ?? null;
+                if (is_array($sectionStatus)) {
+                    $ctPayload['section_status'] = json_encode($sectionStatus);
+                }
+                $section15 = $jsonArray['section15'] ?? [];
+                $ctPayload['appreciation_avancement']     = $section15['appreciation'] ?? null;
+                $ctPayload['recommandations_principales'] = $section15['recommandation'] ?? null;
+                break;
+
+            case 'controle_travaux_n4':
+                // Réception (Niveau 4)
+                $rt = $jsonArray['reception_technique'] ?? [];
+                $rp = $jsonArray['reception_provisoire'] ?? [];
+
+                $dateTech = $rt['date'] ?? null;
+                if ($dateTech && preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $dateTech)) {
+                    $parts = explode('/', $dateTech);
+                    $dateTech = "{$parts[2]}-{$parts[1]}-{$parts[0]}";
+                }
+                if ($dateTech && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateTech)) {
+                    $dateTech = null;
+                }
+                $ctPayload['date_reception_technique']  = $dateTech;
+
+                $dateProv = $rp['date'] ?? null;
+                if ($dateProv && preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $dateProv)) {
+                    $parts = explode('/', $dateProv);
+                    $dateProv = "{$parts[2]}-{$parts[1]}-{$parts[0]}";
+                }
+                if ($dateProv && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateProv)) {
+                    $dateProv = null;
+                }
+                $ctPayload['date_reception_provisoire'] = $dateProv;
+                break;
+        }
+
+        ControleTravaux::updateOrCreate(
+            ['user_id' => $userId, 'localite_id' => $finalLocaliteId],
+            $ctPayload
+        );
+
+        Log::info("controle_travaux updated from type [{$type}] for Localite [{$finalLocaliteId}]");
     }
 
 }
